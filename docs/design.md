@@ -60,10 +60,10 @@ Global flags: `--fleet, -f` (the fleet directory, default `.`, env `WPFLEET_FLEE
 
 | Command | What it does |
 | --- | --- |
-| `wpfleet sites list` | Every site in one or all environments: site, environment, host, image, pod readiness. |
-| `wpfleet sites show <site>` | One site in one environment: host, image, release revision, pod, node, volume, last backup. |
-| `wpfleet deploy <site>... \| --all` | `helm upgrade --install` of each site. `--wait` waits for readiness. Never regenerates secrets. |
-| `wpfleet diff <site>... \| --all` | What a deploy would change: the live manifest against the rendered one, hooks left out, blank lines ignored. Exit code 1 when there is a difference. |
+| `wpfleet sites list` | Every site of `--env`, or of every environment without it: site, environment, host, image, pod readiness. Host and image come from the values on top of the chart's defaults; READY is ready pods out of running ones. An environment whose cluster cannot be opened or read shows READY as `unknown` with a warning, and the rest still prints. |
+| `wpfleet sites show <site>` | One site in one environment: host, image, release revision, pods, node, uploads volume and last backup. The last backup is the last successful run of the site's backup CronJob (`wpfleet backup list` reads S3). `--output json` gives one object. |
+| `wpfleet deploy <site>... \| --all` | `helm upgrade --install` of each site, one after another. `--wait` waits for readiness. Never regenerates secrets. A failing site does not stop the others: the result table shows it, and the command then fails naming every failed site. |
+| `wpfleet diff <site>... \| --all` | What a deploy would change: the live manifest against the rendered one, hooks left out, blank lines and document order ignored, as a unified diff (`--output json`: one object per site). A site without a release diffs against nothing. Values under a Secret's `data` and `stringData` print as `(redacted <tag>)`, an HMAC under a key made for each run, so a changed secret shows without being printed. Exit code 1 when there is a difference. |
 | `wpfleet build <site> --source <dir> [--tag T]` | Builds `<registry>/<site>:<tag>` from the site's code tree on `build.base` and pushes it. The context goes to `docker build` as a tar stream (BuildKit refuses file names that are not UTF-8). Leaves out `wp-config.php`, `wp-content/uploads`, `wp-content/cache`, `wp-content/upgrade` and every `error_log`. `--set` writes the new image into the site file of `--env`. Default tag: UTC `YYYYMMDD-HHMMSS`. |
 | `wpfleet promote <site>... --to <env>` | Copies `image.repository` and `image.tag` from the `promoteFrom` environment's site file into the target's, keeping comments and order. Does not deploy; it prints what changed. |
 | `wpfleet admin <site>` | Prints, and with `--open` opens, a one-time login link to the site's admin, valid for 60 seconds. |
