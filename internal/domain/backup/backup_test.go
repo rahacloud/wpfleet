@@ -37,8 +37,8 @@ func TestParseStamp(t *testing.T) {
 func TestNewStampIsUTC(t *testing.T) {
 	t.Parallel()
 
-	tehran := time.FixedZone("IRST", 3*3600+1800)
-	s := backup.NewStamp(time.Date(2026, 11, 26, 6, 45, 1, 999, tehran))
+	halfHour := time.FixedZone("plus-three-thirty", 3*3600+1800)
+	s := backup.NewStamp(time.Date(2026, 11, 26, 6, 45, 1, 999, halfHour))
 	testutil.Equal(t, "stamp", s.String(), "20261126T031501Z")
 }
 
@@ -118,13 +118,6 @@ func TestMergeAndLatest(t *testing.T) {
 
 func TestRetention(t *testing.T) {
 	t.Parallel()
-
-	now := time.Date(2026, 12, 9, 3, 15, 0, 0, time.UTC)
-	testutil.Equal(t, "cutoff", backup.Cutoff(now, 14).String(), "20261125T031500Z")
-
-	expired := backup.Expired(runs(t), now, 14)
-	testutil.Equal(t, "expired", len(expired), 1)
-	testutil.Equal(t, "expired run", expired[0].Stamp.String(), "20261124T031500Z")
 
 	expires := backup.Expires(stamp(t, "20261124T031500Z"), 14)
 	testutil.True(t, "expires", expires.Equal(time.Date(2026, 12, 8, 3, 15, 0, 0, time.UTC)))

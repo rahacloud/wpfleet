@@ -16,8 +16,8 @@ domainSuffix: ""
 hostLabelSuffix: ""
 
 image:
-  # The official image until the shared base image exists; after that, each
-  # site runs its own immutable image built on top of it.
+  # The official image; a site built with `wpfleet build` runs its own
+  # immutable image on top of build.base instead.
   repository: docker.io/library/wordpress
   tag: 7.0.2-php8.4-apache
   pullPolicy: IfNotPresent
@@ -52,7 +52,8 @@ database:
   password: ""
   tablePrefix: wp_
   # Create the schema and user before install and upgrade, using the
-  # instance's root password. Only possible where we hold that password.
+  # instance's root password. Only possible when the chart can read that
+  # password from rootSecret in the release's namespace.
   provision:
     enabled: true
     rootSecret:
@@ -89,7 +90,8 @@ backup:
   # Blank: <minute from the site name> <hour> every day, in timeZone.
   schedule: ""
   hour: 3
-  timeZone: Asia/Tehran
+  # An IANA time zone for the schedule; blank uses the controller manager's.
+  timeZone: Etc/UTC
   # Database dumps and replaced upload files older than this are deleted.
   keepDays: 14
   image: docker.io/rclone/rclone:1.72.0
@@ -102,6 +104,9 @@ php:
   uploadMaxFilesize: 64M
   memoryLimit: 256M
   maxExecutionTime: 300
+  # PHP's date.timezone: what date(), scheduled posts and PHP's log
+  # timestamps use. An IANA name.
+  timezone: UTC
   # Appended verbatim to the php.ini fragment.
   extraIni: ""
 
@@ -129,7 +134,7 @@ wordpress:
   # Turn it off where nobody should get in without a password.
   oneTimeLogin: true
   # When set, replaces the image's .htaccess for this environment only, e.g.
-  # to drop an IP allowlist that only makes sense on the old servers. Mounted
+  # to drop an IP allowlist carried over from a previous host. Mounted
   # read-only, so WordPress cannot rewrite it when permalinks are saved.
   htaccess: ""
 

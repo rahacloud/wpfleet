@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"fmt"
 	"io"
 	"log/slog"
 
@@ -8,6 +9,8 @@ import (
 	"helm.sh/helm/v4/pkg/chart/common"
 	chartv2 "helm.sh/helm/v4/pkg/chart/v2"
 	kubefake "helm.sh/helm/v4/pkg/kube/fake"
+	releasei "helm.sh/helm/v4/pkg/release"
+	releasev1 "helm.sh/helm/v4/pkg/release/v1"
 	"helm.sh/helm/v4/pkg/storage"
 	"helm.sh/helm/v4/pkg/storage/driver"
 )
@@ -31,4 +34,24 @@ func NewInMemory(ch *chartv2.Chart) *Client {
 		},
 		Timeout: defaultTimeout,
 	}
+}
+
+// Newest is newest, for tests.
+func Newest(versions []releasei.Releaser) *releasev1.Release {
+	return newest(versions)
+}
+
+// Store writes a release record straight into the client's storage.
+func (c *Client) Store(namespace string, rel *releasev1.Release) error {
+	cfg, err := c.configure(namespace)
+	if err != nil {
+		return err
+	}
+
+	err = cfg.Releases.Create(rel)
+	if err != nil {
+		return fmt.Errorf("storing %s v%d: %w", rel.Name, rel.Version, err)
+	}
+
+	return nil
 }

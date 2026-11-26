@@ -10,14 +10,12 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"time"
 
 	"github.com/urfave/cli/v3"
 
 	"github.com/rahacloud/wpfleet/internal/cmd/cmdutil"
 	"github.com/rahacloud/wpfleet/internal/domain/fleet"
 	"github.com/rahacloud/wpfleet/internal/infra/kube"
-	"github.com/rahacloud/wpfleet/internal/infra/values"
 )
 
 // Flag names of the command.
@@ -26,9 +24,6 @@ const (
 	flagOpen = "open"
 	argSite  = "site"
 )
-
-// valueTLS says whether the chart serves the site over HTTPS.
-const valueTLS = "ingress.tls.enabled"
 
 // ErrNoSite is returned when the command gets no site.
 var ErrNoSite = errors.New("name a site: wpfleet admin <site>")
@@ -40,15 +35,13 @@ type deps struct {
 	connect func(ctx context.Context, env *cmdutil.Env) (conn, error)
 	// open opens a URL in the user's browser.
 	open func(ctx context.Context, url string) error
-	// now is the clock.
-	now func() time.Time
 	// random is the source of tokens.
 	random io.Reader
 }
 
 // Command is `wpfleet admin`.
 func Command() *cli.Command {
-	return newCommand(deps{connect: connect, open: Open, now: time.Now, random: rand.Reader})
+	return newCommand(deps{connect: connect, open: Open, random: rand.Reader})
 }
 
 // conn is how the command reaches a site's pods.
@@ -123,7 +116,7 @@ func run(ctx context.Context, cmd *cli.Command, d deps) error {
 
 	slog.Debug("making a login link", "site", site.Name, "env", env.Env.Name, "pod", pod.Name)
 
-	req := Request{Pod: pod.Name, BaseURL: base, User: cmd.String(flagUser), Now: d.now()}
+	req := Request{Pod: pod.Name, BaseURL: base, User: cmd.String(flagUser)}
 
 	login, err := Issue(ctx, c.wp, req, d.random)
 	if err != nil {
@@ -162,26 +155,20 @@ func target(cmd *cli.Command, name string) (*cmdutil.Env, fleet.Site, string, er
 	return env, site, base, nil
 }
 
-// siteURL is the site's canonical URL, with the scheme the chart gives it.
+// siteURL is the site's canonical URL from its values over the chart's
+// defaults, so the host and the scheme are the ones the chart renders.
 func siteURL(env *cmdutil.Env, site fleet.Site) (string, error) {
-	v, err := env.Values(site)
+	v, err := env.ChartValues(site)
 	if err != nil {
 		return "", err
 	}
 
-	host, err := fleet.Host(v)
+	u, err := cmdutil.SiteURL(v)
 	if err != nil {
 		return "", fmt.Errorf("site %s: %w", site.Name, err)
 	}
 
-	scheme := "https"
-
-	// The chart's default is on; only an explicit false turns it off.
-	if tls, ok := values.Get[bool](v, valueTLS); ok && !tls {
-		scheme = "http"
-	}
-
-	return scheme + "://" + host, nil
+	return u, nil
 }
 
 // writeLogin writes the link alone for people, so that it can be copied, or the

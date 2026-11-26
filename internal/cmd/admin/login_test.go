@@ -87,9 +87,18 @@ func (f *fakeWP) stored(t *testing.T) (string, admin.Stored) {
 	return c[3], s
 }
 
-// singleSite answers like a site with the administrator 7.
+// clockKey is the call that reads the site's clock.
+const clockKey = "eval echo time();"
+
+// siteClock is the site's time in the fake: 1_800_000_000.
+const siteClock = "1800000000"
+
+// singleSite answers like a site with the administrator 7 whose clock reads
+// siteClock.
 func singleSite() map[string]string {
-	return map[string]string{"eval echo is_multisite() ? 'yes' : 'no';": "no", "user list": "7", "user get": "12"}
+	return map[string]string{
+		"eval echo is_multisite() ? 'yes' : 'no';": "no", "user list": "7", "user get": "12", clockKey: siteClock,
+	}
 }
 
 func seed() *bytes.Reader {
@@ -121,20 +130,20 @@ func TestIssueSingleSite(t *testing.T) {
 	t.Parallel()
 
 	wp := newFakeWP(singleSite())
-	now := time.Date(2026, 1, 2, 3, 4, 5, 600, time.UTC)
 
-	login, err := admin.Issue(t.Context(), wp,
-		admin.Request{Pod: blogPod, BaseURL: blogURL, User: "", Now: now}, seed())
+	login, err := admin.Issue(t.Context(), wp, admin.Request{Pod: blogPod, BaseURL: blogURL, User: ""}, seed())
 	testutil.NoError(t, err)
 
 	token, _ := admin.NewToken(seed())
 	testutil.Equal(t, "url", login.URL, "https://blog.example.com/?wpfleet-login="+token)
 	testutil.Equal(t, "user", login.UserID, 7)
-	testutil.Equal(t, "expires", login.Expires, time.Date(2026, 1, 2, 3, 5, 5, 0, time.UTC))
+	testutil.Equal(t, "expires by the site's clock", login.Expires, time.Unix(1_800_000_060, 0))
+	testutil.DeepEqual(t, "clock read on the site", wp.call(t, "eval", "echo time();")[3:],
+		[]string{"--url=" + blogURL + "/"})
 
 	list := wp.call(t, "user", "list")
 	testutil.DeepEqual(t, "user list", list[3:], []string{"--role=administrator", "--field=ID", "--number=1",
-		"--orderby=ID", "--order=ASC", "--url=https://blog.example.com/"})
+		"--orderby=ID", "--order=ASC", "--url=" + blogURL + "/"})
 
 	name, stored := wp.stored(t)
 	testutil.Equal(t, "option name", name, admin.OptionName(token))
@@ -142,7 +151,7 @@ func TestIssueSingleSite(t *testing.T) {
 	testutil.Equal(t, "stored user", stored.User, 7)
 	testutil.Equal(t, "stored expiry", stored.Expires, login.Expires.Unix())
 	testutil.DeepEqual(t, "option flags", wp.call(t, "option", "add")[5:],
-		[]string{"--format=json", "--autoload=no", "--url=https://blog.example.com/"})
+		[]string{"--format=json", "--autoload=no", "--url=" + blogURL + "/"})
 
 	for _, c := range wp.calls {
 		testutil.Equal(t, "pod", c[0], "blog-0")
@@ -154,7 +163,7 @@ func TestIssueUsers(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	req := admin.Request{Pod: blogPod, BaseURL: blogURL, User: "editor", Now: time.Now()}
+	req := admin.Request{Pod: blogPod, BaseURL: blogURL, User: "editor"}
 
 	wp := newFakeWP(singleSite())
 	login, err := admin.Issue(ctx, wp, req, seed())
@@ -185,7 +194,7 @@ func TestIssueErrors(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
-	req := admin.Request{Pod: blogPod, BaseURL: blogURL, User: "", Now: time.Now()}
+	req := admin.Request{Pod: blogPod, BaseURL: blogURL, User: ""}
 
 	noAdmin := singleSite()
 	noAdmin["user list"] = ""
@@ -204,7 +213,12 @@ func TestIssueErrors(t *testing.T) {
 	testutil.ErrorIs(t, err, admin.ErrBadUser)
 	testutil.Equal(t, "no wp-cli call", len(wp.calls), 0)
 
-	for _, fail := range []string{"eval echo is_multisite() ? 'yes' : 'no';", "user list", "option add"} {
+	badClock := singleSite()
+	badClock[clockKey] = "Error: no"
+	_, err = admin.Issue(ctx, newFakeWP(badClock), req, seed())
+	testutil.ErrorIs(t, err, admin.ErrBadClock)
+
+	for _, fail := range []string{"eval echo is_multisite() ? 'yes' : 'no';", "user list", clockKey, "option add"} {
 		wp := newFakeWP(singleSite())
 		wp.fail = fail
 		_, err = admin.Issue(ctx, wp, req, seed())

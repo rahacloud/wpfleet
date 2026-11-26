@@ -28,17 +28,51 @@ const dockerfileMode = 0o644
 // stream cannot carry, such as a socket or a device.
 var ErrUnsupportedFile = errors.New("unsupported file type")
 
+// configSample is the one wp-config file at the root that holds no secrets.
+const configSample = "wp-config-sample.php"
+
 // Excluded reports whether the path rel, slash-separated and relative to the
-// source tree, stays out of the image: the configuration with the site's
-// secrets, what WordPress writes at run time, and every error_log. A
-// directory that is excluded is left out with everything below it.
+// source tree, stays out of the image, because it holds the site's secrets or
+// is written at run time:
+//
+//   - at the root, every file whose name starts with wp-config except
+//     wp-config-sample.php (wp-config.php and the copies a server collects,
+//     such as wp-config.php.bak or wp-config-old.php), and database dumps
+//     (*.sql, *.sql.gz and the like);
+//   - wp-content/uploads, wp-content/cache and wp-content/upgrade;
+//   - at any depth, .git, .svn and .hg, dotenv files (.env, .env.*) and every
+//     error_log.
+//
+// A directory that is excluded is left out with everything below it.
 func Excluded(rel string) bool {
 	switch rel {
-	case "wp-config.php", "wp-content/uploads", "wp-content/cache", "wp-content/upgrade":
+	case "wp-content/uploads", "wp-content/cache", "wp-content/upgrade":
 		return true
 	}
 
-	return path.Base(rel) == "error_log"
+	switch base := path.Base(rel); {
+	case base == ".git", base == ".svn", base == ".hg", base == "error_log":
+		return true
+	case base == ".env", strings.HasPrefix(base, ".env."):
+		return true
+	case strings.Contains(rel, "/"):
+		return false
+	}
+
+	lower := strings.ToLower(rel)
+
+	return (strings.HasPrefix(lower, "wp-config") && lower != configSample) || isDump(lower)
+}
+
+// isDump reports whether a lowercase file name is a database dump: .sql, or
+// .sql compressed.
+func isDump(name string) bool {
+	switch ext := path.Ext(name); ext {
+	case ".gz", ".bz2", ".xz", ".zst", ".zip":
+		name = strings.TrimSuffix(name, ext)
+	}
+
+	return path.Ext(name) == ".sql"
 }
 
 // Dockerfile is the Dockerfile the build runs: the site's tree copied onto

@@ -80,7 +80,7 @@ func TestFleet(t *testing.T) {
 		Chart:    "",
 		Registry: "",
 		Build:    config.Build{Base: ""},
-		WPCLI:    config.WPCLI{URL: "", SHA512: ""},
+		WPCLI:    config.WPCLI{URL: "", SHA512: "", AllowUnverified: false},
 		Environments: []config.Environment{{
 			Name: "a", Namespace: "x", Kubeconfig: "/etc/kube", Context: "", Values: "/srv/a", PromoteFrom: "",
 		}},
@@ -149,4 +149,24 @@ func TestValidate(t *testing.T) {
 			testutil.Contains(t, "error", err.Error(), want)
 		})
 	}
+}
+
+// The default phar is checked against wp-cli's published sum, and running an
+// unchecked one takes an explicit opt-out.
+func TestDefaultWPCLIIsVerified(t *testing.T) {
+	t.Parallel()
+
+	def := config.Default().WPCLI
+	testutil.Equal(t, "url", def.URL, config.DefaultWPCLIURL)
+	testutil.Equal(t, "sum", def.SHA512, config.DefaultWPCLISHA512)
+	testutil.Equal(t, "sum length", len(def.SHA512), 128)
+	testutil.True(t, "verified by default", !def.AllowUnverified)
+
+	dir := writeFleet(t,
+		"wpcli:\n  url: https://mirror.example.com/wp-cli.phar\n  sha512: \"\"\n  allowUnverified: true\n")
+
+	cfg, err := config.Load(dir, noEnv)
+	testutil.NoError(t, err)
+	testutil.Equal(t, "no sum", cfg.WPCLI.SHA512, "")
+	testutil.True(t, "opted out", cfg.WPCLI.AllowUnverified)
 }

@@ -158,29 +158,12 @@ func (d Deps) target(cmd *cli.Command) (target, error) {
 		return target{}, err
 	}
 
-	v, err := ChartValues(env, site)
+	v, err := env.ChartValues(site)
 	if err != nil {
 		return target{}, err
 	}
 
 	return target{env: env, site: site, values: v}, nil
-}
-
-// ChartValues returns a site's values over the chart's defaults, which is
-// what the chart's templates see: the backup images and the S3 secret name
-// usually come from the defaults.
-func ChartValues(env *cmdutil.Env, site fleet.Site) (values.Values, error) {
-	v, err := env.Values(site)
-	if err != nil {
-		return values.Values{}, err
-	}
-
-	h, err := env.Helm()
-	if err != nil {
-		return values.Values{}, err
-	}
-
-	return values.New(values.Merge(h.Chart().Values, v.Tree())), nil
 }
 
 // Confirm asks question on stderr and reads the answer from stdin, unless yes

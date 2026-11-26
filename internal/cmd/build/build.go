@@ -60,8 +60,10 @@ func newCommand(runner docker.Runner, now func() time.Time) *cli.Command {
 		Usage:     "build a site's image from its code tree and push it",
 		ArgsUsage: "<site>",
 		Description: "Builds <registry>/<site>:<tag> on build.base from the code tree in --source and pushes it. " +
-			"wp-config.php, wp-content/uploads, wp-content/cache, wp-content/upgrade and every error_log " +
-			"stay out of the image. With --set the new image is written into the site's file in --env.",
+			"What holds the site's secrets or is written at run time stays out of the image: at the root, every " +
+			"wp-config* file except wp-config-sample.php and every database dump (*.sql, *.sql.gz and the like); " +
+			"wp-content/uploads, wp-content/cache and wp-content/upgrade; and at any depth .git, .svn, .hg, " +
+			".env, .env.* and every error_log. With --set the new image is written into the site's file in --env.",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:     flagSource,

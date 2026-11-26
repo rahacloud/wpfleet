@@ -196,6 +196,23 @@ func TestExcluded(t *testing.T) {
 		"wp-content/themes/t/uploads":    false,
 		"error_log.txt":                  false,
 		"index.php":                      false,
+		// Copies of the configuration and other files with secrets.
+		"wp-config.php.bak":                    true,
+		"wp-config.php~":                       true,
+		"wp-config-old.php":                    true,
+		"WP-CONFIG.PHP.save":                   true,
+		"wp-config-sample.php":                 false,
+		".git":                                 true,
+		"wp-content/plugins/p/.git":            true,
+		".svn":                                 true,
+		".env":                                 true,
+		".env.production":                      true,
+		"wp-content/themes/t/.env":             true,
+		".environment":                         false,
+		"backup.sql":                           true,
+		"db-2026.SQL.GZ":                       true,
+		"wp-content/plugins/p/schema.sql":      false,
+		"wp-content/plugins/p/wp-config-x.php": false,
 	} {
 		testutil.Equal(t, rel, docker.Excluded(rel), want)
 	}

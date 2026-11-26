@@ -32,6 +32,9 @@ func harness(t *testing.T) *bt.Harness {
 	return h
 }
 
+// cacheFlush is the last wp-cli command of a copy.
+const cacheFlush = "cache flush"
+
 // copyArgs are the arguments of wpfleet copy blog.
 func copyArgs(from, to string, extra ...string) []string {
 	return append([]string{"copy", "blog", "--from", from, "--to", to}, extra...)
@@ -39,7 +42,7 @@ func copyArgs(from, to string, extra ...string) []string {
 
 // wpCalls are the wp-cli commands run in a cluster, without the phar part.
 func wpCalls(f *kubetest.Fake) []string {
-	prefix := len(wpcli.Command())
+	prefix := len(wpcli.Command(""))
 
 	var out []string
 
@@ -75,7 +78,7 @@ func TestCopy(t *testing.T) {
 	testutil.DeepEqual(t, "wp-cli", wpCalls(dev), []string{
 		"search-replace blog-staging.example.com blog-dev.example.com --all-tables-with-prefix --skip-columns=guid --precise",
 		"eval-file /tmp/wpfleet-rehost-extra.php blog-staging.example.com blog-dev.example.com",
-		"cache flush",
+		cacheFlush,
 	})
 
 	php, ok := dev.File("blog-1", "/tmp/wpfleet-"+assets.RehostExtraName)
@@ -93,15 +96,38 @@ func TestCopyMultisiteDatabaseOnly(t *testing.T) {
 
 	h := harness(t)
 	h.WriteSite(t, bt.Development, "blog", "wordpress:\n  configExtra: |\n    define('MULTISITE', true);\n")
+	h.WriteSite(t, bt.Staging, "blog", "ingress:\n  tls:\n    enabled: false\n")
 
 	args := copyArgs(bt.Staging, bt.Development, "--skip-uploads", "--yes")
 	testutil.NoError(t, h.Run(t, copycmd.NewCommand(h.Deps), "", args...))
 
-	calls := wpCalls(h.Kube[bt.Development])
-	testutil.True(t, "network", strings.HasSuffix(calls[0], "--precise --network"))
+	// The imported database still holds the source's domain, so wp-cli loads
+	// the network by the source's URL for search-replace, and by the target's
+	// own configuration once the domain is replaced.
+	testutil.DeepEqual(t, "wp-cli", wpCalls(h.Kube[bt.Development]), []string{
+		"search-replace blog-staging.example.com blog-dev.example.com --all-tables-with-prefix --skip-columns=guid " +
+			"--precise --network --url=http://blog-staging.example.com/",
+		"eval-file /tmp/wpfleet-rehost-extra.php blog-staging.example.com blog-dev.example.com",
+		cacheFlush,
+	})
 
 	pod := h.Jobs(t, bt.Development)[0].Spec.Template.Spec
 	testutil.Equal(t, "no uploads volume", len(pod.Volumes), 1)
+}
+
+// The hosts come from the values over the chart's defaults, so a fleet's own
+// chart that sets domainSuffix gives the host the chart renders.
+func TestCopyChartDefaults(t *testing.T) {
+	t.Parallel()
+
+	h := harness(t)
+	testutil.CustomChart(t, h.Dir, "charts/custom", `domainSuffix: ""`, `domainSuffix: example.org`)
+	testutil.WriteFile(t, h.Dir, "wpfleet.yaml", "chart: charts/custom\n"+testutil.ReadFile(t, h.Dir+"/wpfleet.yaml"))
+	testutil.WriteFile(t, h.Dir, "environments/development/_shared.yaml", "backup:\n  enabled: true\n")
+
+	testutil.NoError(t, h.Run(t, copycmd.NewCommand(h.Deps), "", copyArgs(bt.Staging, bt.Development, "-y")...))
+	testutil.Equal(t, "search-replace", wpCalls(h.Kube[bt.Development])[0],
+		"search-replace blog-staging.example.com blog.example.org --all-tables-with-prefix --skip-columns=guid --precise")
 }
 
 func TestCopySameHost(t *testing.T) {
@@ -112,7 +138,7 @@ func TestCopySameHost(t *testing.T) {
 
 	args := copyArgs(bt.Staging, bt.Development, "-y")
 	testutil.NoError(t, h.Run(t, copycmd.NewCommand(h.Deps), "", args...))
-	testutil.DeepEqual(t, "only the flush", wpCalls(h.Kube[bt.Development]), []string{"cache flush"})
+	testutil.DeepEqual(t, "only the flush", wpCalls(h.Kube[bt.Development]), []string{cacheFlush})
 	testutil.Contains(t, "stderr", h.Err.String(), "no host to move")
 }
 

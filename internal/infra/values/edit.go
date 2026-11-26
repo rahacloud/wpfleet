@@ -20,6 +20,10 @@ import (
 // scalar or through an anchor.
 var ErrUnsupportedLayout = errors.New("cannot edit this layout in place")
 
+// ErrChangedOnDisk is returned when a site file changed between planning an
+// edit and writing it.
+var ErrChangedOnDisk = errors.New("the site file changed since it was read")
+
 // ErrEmptyImage is returned when SetImage gets an empty repository or tag.
 var ErrEmptyImage = errors.New("image repository and tag must not be empty")
 
@@ -37,23 +41,66 @@ const defaultIndent = 2
 // SetImage sets image.repository and image.tag in the site file at path. Only
 // the bytes of the two values change: comments, key order, quoting and every
 // other line stay as they are. A missing key is added under image:, and a
-// missing image: block is appended at the end of the file.
+// missing image: block is appended at the end of the file. It is PlanImage
+// followed by Write.
 func SetImage(path, repository, tag string) error {
+	e, err := PlanImage(path, repository, tag)
+	if err != nil {
+		return err
+	}
+
+	return e.Write()
+}
+
+// ImageEdit is the edit SetImage makes to one site file, computed but not yet
+// written, so that a caller editing several files can refuse them all before
+// it writes any.
+type ImageEdit struct {
+	// Path is the site file.
+	Path string
+	// Before is the file as it was read; After is what it becomes.
+	Before, After []byte
+}
+
+// PlanImage reads the site file at path and computes the edit that sets
+// image.repository and image.tag, refusing with ErrUnsupportedLayout a layout
+// it cannot edit in place. It writes nothing.
+func PlanImage(path, repository, tag string) (ImageEdit, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // the caller names the site file to edit
 	if err != nil {
-		return fmt.Errorf("reading site file: %w", err)
+		return ImageEdit{}, fmt.Errorf("reading site file: %w", err)
 	}
 
 	out, err := setImage(data, repository, tag)
 	if err != nil {
-		return fmt.Errorf("%s: %w", path, err)
+		return ImageEdit{}, fmt.Errorf("%s: %w", path, err)
 	}
 
-	if bytes.Equal(out, data) {
+	return ImageEdit{Path: path, Before: data, After: out}, nil
+}
+
+// Changed reports whether the edit changes the file.
+func (e ImageEdit) Changed() bool {
+	return !bytes.Equal(e.Before, e.After)
+}
+
+// Write writes the edited file, unless the edit changes nothing. It refuses
+// with ErrChangedOnDisk a file that changed since PlanImage read it.
+func (e ImageEdit) Write() error {
+	if !e.Changed() {
 		return nil
 	}
 
-	return writeFileAtomic(path, out)
+	current, err := os.ReadFile(e.Path)
+	if err != nil {
+		return fmt.Errorf("reading site file: %w", err)
+	}
+
+	if !bytes.Equal(current, e.Before) {
+		return fmt.Errorf("%s: %w", e.Path, ErrChangedOnDisk)
+	}
+
+	return writeFileAtomic(e.Path, e.After)
 }
 
 // writeFileAtomic replaces path with data through a temporary file in the same

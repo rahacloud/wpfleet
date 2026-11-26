@@ -34,6 +34,9 @@ var ErrNoAdmin = errors.New("the site has no administrator; name a user with --u
 // for a user ID wp-cli did not give as a number.
 var ErrBadUser = errors.New("invalid user")
 
+// ErrBadClock is returned when the site's time is not a Unix time.
+var ErrBadClock = errors.New("wp-cli gave the site's time as")
+
 // WP runs wp-cli in a site's pod; *wpcli.Runner is one.
 type WP interface {
 	// Output runs wp-cli with args in pod and returns its trimmed output.
@@ -73,7 +76,8 @@ type Stored struct {
 	Hash string `json:"hash"`
 	// User is the ID of the user to log in.
 	User int `json:"user"`
-	// Expires is the Unix time after which the token does nothing.
+	// Expires is the Unix time, by the site's clock, after which the token
+	// does nothing.
 	Expires int64 `json:"expires"`
 }
 
@@ -86,8 +90,6 @@ type Request struct {
 	BaseURL string
 	// User is the login to log in as; empty picks the first administrator.
 	User string
-	// Now is the current time; the link expires TTL after it.
-	Now time.Time
 }
 
 // Login is a link that was made.
@@ -117,7 +119,14 @@ func Issue(ctx context.Context, wp WP, req Request, random io.Reader) (Login, er
 		return Login{}, err
 	}
 
-	expires := req.Now.Add(TTL).Truncate(time.Second)
+	// The expiry is set by the site's clock, the one the plugin checks it
+	// against, so a wrong local clock cannot stretch the link's life.
+	now, err := serverTime(ctx, wp, req.Pod, site)
+	if err != nil {
+		return Login{}, err
+	}
+
+	expires := now.Add(TTL)
 
 	value, err := json.Marshal(Stored{Hash: TokenHash(token), User: userID, Expires: expires.Unix()})
 	if err != nil {
@@ -131,6 +140,21 @@ func Issue(ctx context.Context, wp WP, req Request, random io.Reader) (Login, er
 	}
 
 	return Login{URL: req.BaseURL + "/?" + QueryParam + "=" + token, UserID: userID, Expires: expires}, nil
+}
+
+// serverTime is the current time by the clock of the site's pod.
+func serverTime(ctx context.Context, wp WP, pod, site string) (time.Time, error) {
+	out, err := wp.Output(ctx, pod, "eval", "echo time();", site)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("reading the site's clock: %w", err)
+	}
+
+	sec, err := strconv.ParseInt(strings.TrimSpace(out), 10, 64)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("%w: %q", ErrBadClock, out)
+	}
+
+	return time.Unix(sec, 0), nil
 }
 
 // pickUser returns the ID of login, or of the site's first administrator: on

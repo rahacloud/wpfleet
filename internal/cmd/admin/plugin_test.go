@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -32,16 +33,17 @@ type issued struct {
 	token, name, value string
 }
 
-// issue runs Issue at now, with the fake site's administrator being admin.
+// issue runs Issue with the site's clock at now, with the fake site's
+// administrator being admin.
 func issue(t *testing.T, now time.Time, adminID string) issued {
 	t.Helper()
 
 	answers := singleSite()
 	answers["user list"] = adminID
+	answers[clockKey] = strconv.FormatInt(now.Unix(), 10)
 	wp := newFakeWP(answers)
 
-	login, err := admin.Issue(t.Context(), wp,
-		admin.Request{Pod: blogPod, BaseURL: blogURL, User: "", Now: now}, seed())
+	login, err := admin.Issue(t.Context(), wp, admin.Request{Pod: blogPod, BaseURL: blogURL, User: ""}, seed())
 	testutil.NoError(t, err)
 
 	_, token, _ := strings.Cut(login.URL, "wpfleet-login=")
@@ -93,6 +95,13 @@ func TestPlugin(t *testing.T) {
 	o = runPlugin(t, php, expired.token, expired.name, expired.value)
 	testutil.Equal(t, "an expired token does nothing", len(o.Log), 0)
 	testutil.Equal(t, "an expired token is deleted", len(o.Options), 0)
+
+	// An expiry further ahead than a link lives, as a client with a fast
+	// clock would have stored it, is refused.
+	ahead := issue(t, now.Add(3*time.Hour), "7")
+	o = runPlugin(t, php, ahead.token, ahead.name, ahead.value)
+	testutil.Equal(t, "an expiry too far ahead does nothing", len(o.Log), 0)
+	testutil.Equal(t, "an expiry too far ahead is deleted", len(o.Options), 0)
 
 	gone := issue(t, now, "8")
 	o = runPlugin(t, php, gone.token, gone.name, gone.value)

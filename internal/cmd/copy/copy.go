@@ -16,6 +16,7 @@ import (
 	domain "github.com/rahacloud/wpfleet/internal/domain/backup"
 	"github.com/rahacloud/wpfleet/internal/domain/fleet"
 	"github.com/rahacloud/wpfleet/internal/infra/assets"
+	"github.com/rahacloud/wpfleet/internal/infra/values"
 	"github.com/rahacloud/wpfleet/internal/infra/wpcli"
 )
 
@@ -75,11 +76,14 @@ type copier struct {
 	d backup.Deps
 }
 
-// side is one end of a copy: an environment, the site in it and its values.
+// side is one end of a copy: an environment, the site in it, its values over
+// the chart's defaults, and its host and URL as the chart renders them.
 type side struct {
-	env  *cmdutil.Env
-	site fleet.Site
-	host string
+	env    *cmdutil.Env
+	site   fleet.Site
+	values values.Values
+	host   string
+	url    string
 }
 
 func (c copier) copy(ctx context.Context, cmd *cli.Command) error {
@@ -133,7 +137,7 @@ func (c copier) copy(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	return rehost(ctx, wp, dst, src.host, multisite, out, errw)
+	return rehost(ctx, wp, src, dst, multisite, out, errw)
 }
 
 // ready checks, before anything is overwritten, that the target has a running
@@ -187,7 +191,7 @@ func (c copier) open(f *cmdutil.Fleet, envName, name string) (side, error) {
 		return side{}, err
 	}
 
-	v, err := env.Values(site)
+	v, err := env.ChartValues(site)
 	if err != nil {
 		return side{}, err
 	}
@@ -197,7 +201,12 @@ func (c copier) open(f *cmdutil.Fleet, envName, name string) (side, error) {
 		return side{}, fmt.Errorf("%s in %s: %w", name, envName, err)
 	}
 
-	return side{env: env, site: site, host: host}, nil
+	u, err := cmdutil.SiteURL(v)
+	if err != nil {
+		return side{}, fmt.Errorf("%s in %s: %w", name, envName, err)
+	}
+
+	return side{env: env, site: site, values: v, host: host, url: u}, nil
 }
 
 // plan finds the source's latest backup and builds its restore into the
@@ -228,34 +237,27 @@ func (c copier) plan(
 		return backup.RestoreSpec{}, false, err
 	}
 
-	v, err := backup.ChartValues(dst.env, dst.site)
+	spec, err := c.d.Spec(dst.env, dst.values, plan, bucket.Bucket())
 	if err != nil {
 		return backup.RestoreSpec{}, false, err
 	}
 
-	spec, err := c.d.Spec(dst.env, v, plan, bucket.Bucket())
-	if err != nil {
-		return backup.RestoreSpec{}, false, err
-	}
-
-	return spec, domain.Multisite(v), nil
+	return spec, domain.Multisite(dst.values), nil
 }
 
-// rehost moves the restored site from oldHost to its own host and flushes
-// its cache, in a running pod of the target, looked up again because the
-// restore may have taken a while.
-func rehost(
-	ctx context.Context, wp *wpcli.Runner, dst side, oldHost string, multisite bool, out, errw io.Writer,
-) error {
+// rehost moves the restored site from the source's host to its own and
+// flushes its cache, in a running pod of the target, looked up again because
+// the restore may have taken a while.
+func rehost(ctx context.Context, wp *wpcli.Runner, src, dst side, multisite bool, out, errw io.Writer) error {
 	pod, err := dst.env.Kube.RunningPod(ctx, dst.site.Name)
 	if err != nil {
 		return err
 	}
 
-	if oldHost == dst.host {
-		_, _ = fmt.Fprintf(errw, "Both environments serve %s; no host to move.\n", oldHost)
+	if src.host == dst.host {
+		_, _ = fmt.Fprintf(errw, "Both environments serve %s; no host to move.\n", src.host)
 	} else {
-		err = moveHost(ctx, wp, dst, pod.Name, oldHost, multisite, out, errw)
+		err = moveHost(ctx, wp, src, dst, pod.Name, multisite, out, errw)
 		if err != nil {
 			return err
 		}
@@ -271,13 +273,19 @@ func rehost(
 	return nil
 }
 
-// moveHost runs search-replace and then the page builder fix-up.
+// moveHost runs search-replace and then the page builder fix-up. On a
+// multisite, the imported database still names the source's domain in
+// wp_blogs and wp_site while the target's wp-config names its own, so wp-cli
+// can only load WordPress for search-replace with --url set to the source's
+// URL; once the domain is replaced, the target's own configuration works.
 func moveHost(
-	ctx context.Context, wp *wpcli.Runner, dst side, pod, oldHost string, multisite bool, out, errw io.Writer,
+	ctx context.Context, wp *wpcli.Runner, src, dst side, pod string, multisite bool, out, errw io.Writer,
 ) error {
+	oldHost := src.host
+
 	args := []string{"search-replace", oldHost, dst.host, "--all-tables-with-prefix", "--skip-columns=guid", "--precise"}
 	if multisite {
-		args = append(args, "--network")
+		args = append(args, "--network", "--url="+src.url+"/")
 	}
 
 	err := wp.Run(ctx, pod, out, errw, args...)

@@ -4,7 +4,9 @@
  * Description: Answers the one-time admin login links that `wpfleet admin` prints. Mounted by the wpfleet chart (wordpress.oneTimeLogin).
  *
  * `wpfleet admin` stores the SHA-256 of a random token in the option
- * _wpfleet_login_<sha256>, with the user ID and an expiry 60 seconds ahead.
+ * _wpfleet_login_<sha256>, with the user ID and an expiry 60 seconds ahead by
+ * the site's own clock. An expiry further ahead than that is refused, so a
+ * client with a wrong clock cannot make a link that lives longer.
  * A request for /?wpfleet-login=<token> finds that option, deletes it before
  * anything else so that the link works once, and logs the user in. Any other
  * token falls through to the normal page, which says nothing about why.
@@ -13,6 +15,9 @@
 defined('ABSPATH') || exit;
 
 add_action('init', 'wpfleet_login', 0);
+
+/** How long a link works, in seconds, plus a little for clocks between pods. */
+const WPFLEET_LOGIN_MAX_AGE = 60 + 10;
 
 /**
  * Logs in the user of a valid one-time token, and returns otherwise.
@@ -48,7 +53,9 @@ function wpfleet_login()
         return;
     }
 
-    if (!hash_equals($login['hash'], $hash) || (int) $login['expires'] < time()) {
+    $expires = (int) $login['expires'];
+
+    if (!hash_equals($login['hash'], $hash) || $expires < time() || $expires > time() + WPFLEET_LOGIN_MAX_AGE) {
         return;
     }
 

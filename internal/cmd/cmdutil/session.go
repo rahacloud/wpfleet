@@ -56,7 +56,11 @@ func (f *Fleet) Sites(env fleet.Environment) ([]fleet.Site, error) {
 // WPCLI fetches wp-cli.phar as wpfleet.yaml says and returns a runner that
 // copies it into pods through k.
 func (f *Fleet) WPCLI(ctx context.Context, k kube.Execer) (*wpcli.Runner, error) {
-	phar, err := wpcli.Ensure(ctx, f.Config.WPCLI.URL, f.Config.WPCLI.SHA512)
+	phar, err := wpcli.Ensure(ctx, wpcli.Source{
+		URL:             f.Config.WPCLI.URL,
+		SHA512:          f.Config.WPCLI.SHA512,
+		AllowUnverified: f.Config.WPCLI.AllowUnverified,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -174,6 +178,45 @@ func (e *Env) SelectSites(names []string, all bool) ([]fleet.Site, error) {
 // Values loads a site's merged values.
 func (e *Env) Values(site fleet.Site) (values.Values, error) {
 	return values.Load(site.ValuesFiles...)
+}
+
+// ChartValues returns a site's values over the chart's defaults, which is
+// what the chart's templates see: the host, the scheme, the backup images
+// and the S3 secret name may all come from the defaults.
+func (e *Env) ChartValues(site fleet.Site) (values.Values, error) {
+	v, err := e.Values(site)
+	if err != nil {
+		return values.Values{}, err
+	}
+
+	h, err := e.Helm()
+	if err != nil {
+		return values.Values{}, err
+	}
+
+	return values.New(values.Merge(h.Chart().Values, v.Tree())), nil
+}
+
+// valueTLS says whether the chart serves a site over HTTPS.
+const valueTLS = "ingress.tls.enabled"
+
+// SiteURL is the canonical URL of a site from its values over the chart's
+// defaults: the host as the chart's wordpress.hosts helper gives it, over
+// HTTPS unless ingress.tls.enabled is false.
+func SiteURL(v values.Values) (string, error) {
+	host, err := fleet.Host(v)
+	if err != nil {
+		return "", err
+	}
+
+	scheme := "https"
+
+	// The chart's default is on; only an explicit false turns it off.
+	if tls, ok := values.Get[bool](v, valueTLS); ok && !tls {
+		scheme = "http"
+	}
+
+	return scheme + "://" + host, nil
 }
 
 // chartPath resolves the configured chart against the fleet directory.

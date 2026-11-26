@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"testing"
-	"time"
 
 	"github.com/urfave/cli/v3"
 
@@ -61,6 +60,13 @@ type result struct {
 func runAdmin(t *testing.T, globals []string, args ...string) (result, error) {
 	t.Helper()
 
+	return runAdminIn(t, fleetDir(t), globals, args...)
+}
+
+// runAdminIn is runAdmin on the fleet in dir.
+func runAdminIn(t *testing.T, dir string, globals []string, args ...string) (result, error) {
+	t.Helper()
+
 	pods := kubetest.New(namespace,
 		kubetest.RunningPod(namespace, "blog", "blog-0"), kubetest.RunningPod(namespace, "shop", "shop-0"))
 	res := result{stdout: "", opened: nil, wp: newFakeWP(singleSite())}
@@ -80,11 +86,11 @@ func runAdmin(t *testing.T, globals []string, args ...string) (result, error) {
 		ErrWriter:      &bytes.Buffer{},
 		ExitErrHandler: func(context.Context, *cli.Command, error) {},
 		Commands: []*cli.Command{
-			admin.NewTestCommand(pods, res.wp, open, time.Unix(1_800_000_000, 0), seed()),
+			admin.NewTestCommand(pods, res.wp, open, seed()),
 		},
 	}
 
-	argv := append([]string{"wpfleet", "--fleet", fleetDir(t), "--env", "staging"}, globals...)
+	argv := append([]string{"wpfleet", "--fleet", dir, "--env", "staging"}, globals...)
 
 	err := root.Run(t.Context(), append(append(argv, "admin"), args...))
 	res.stdout = stdout.String()
@@ -117,6 +123,24 @@ func TestCommand(t *testing.T) {
 	testutil.DeepEqual(t, "opened", res.opened, []string{"http://shop.example.com/?wpfleet-login=" + token})
 	testutil.Equal(t, "user", res.wp.call(t, "user", "get")[3], "editor")
 	testutil.Equal(t, "pod", res.wp.call(t, "user", "get")[0], "shop-0")
+}
+
+// The host and the scheme come from the values over the chart's defaults, so
+// a fleet's own chart that sets domainSuffix and turns TLS off is followed.
+func TestCommandChartDefaults(t *testing.T) {
+	t.Parallel()
+
+	dir := fleetDir(t)
+	testutil.CustomChart(t, dir, "charts/custom",
+		`domainSuffix: ""`, `domainSuffix: example.org`,
+		"tls:\n    enabled: true", "tls:\n    enabled: false")
+	testutil.WriteFile(t, dir, "wpfleet.yaml",
+		"chart: charts/custom\nenvironments:\n  - name: staging\n    namespace: wp-staging\n    kubeconfig: kubeconfig\n")
+	testutil.WriteFile(t, dir, "environments/staging/_shared.yaml", "{}\n")
+
+	res, err := runAdminIn(t, dir, nil, "blog")
+	testutil.NoError(t, err)
+	testutil.Contains(t, "stdout", res.stdout, "http://blog.example.org/?wpfleet-login=")
 }
 
 func TestCommandJSON(t *testing.T) {

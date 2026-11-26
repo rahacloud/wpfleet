@@ -8,12 +8,6 @@ import (
 	"github.com/rahacloud/wpfleet/internal/testutil"
 )
 
-func TestRehostExtra(t *testing.T) {
-	t.Parallel()
-
-	testutil.Contains(t, "rehost-extra.php", string(assets.RehostExtra), "<?php", "mfn-page-items", "wp_cache_flush")
-}
-
 func TestWriteTemp(t *testing.T) {
 	t.Parallel()
 

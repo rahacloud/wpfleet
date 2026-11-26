@@ -169,3 +169,30 @@ func TestSetImageKeepsMode(t *testing.T) {
 	testutil.NoError(t, err)
 	testutil.Equal(t, "files left in the directory", len(entries), 1)
 }
+
+func TestPlanImageWritesNothing(t *testing.T) {
+	t.Parallel()
+
+	path := testutil.WriteFile(t, t.TempDir(), "blog.yaml", "site: blog\n")
+
+	e, err := values.PlanImage(path, "r/blog", "v1")
+	testutil.NoError(t, err)
+	testutil.True(t, "changed", e.Changed())
+	testutil.Equal(t, "not written yet", testutil.ReadFile(t, path), "site: blog\n")
+
+	testutil.NoError(t, e.Write())
+	testutil.Equal(t, "written", testutil.ReadFile(t, path), "site: blog\nimage:\n  repository: r/blog\n  tag: v1\n")
+
+	// A file that changed after the plan is not overwritten.
+	e, err = values.PlanImage(path, "r/blog", "v2")
+	testutil.NoError(t, err)
+	testutil.WriteFile(t, filepath.Dir(path), "blog.yaml", "site: blog\n# edited\n")
+	testutil.ErrorIs(t, e.Write(), values.ErrChangedOnDisk)
+
+	testutil.WriteFile(t, filepath.Dir(path), "blog.yaml", "site: blog\nimage:\n  repository: r/blog\n  tag: v1\n")
+
+	same, err := values.PlanImage(path, "r/blog", "v1")
+	testutil.NoError(t, err)
+	testutil.True(t, "the same image changes nothing", !same.Changed())
+	testutil.NoError(t, same.Write())
+}

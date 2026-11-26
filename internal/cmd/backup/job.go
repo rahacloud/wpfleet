@@ -9,6 +9,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	domain "github.com/rahacloud/wpfleet/internal/domain/backup"
 	"github.com/rahacloud/wpfleet/internal/infra/kube"
@@ -80,8 +81,8 @@ type RestoreSpec struct {
 // uploads syncs the uploads back into the site's claim), then a container
 // with the chart's MariaDB image imports the dump with the site's own user
 // and password from the site's Secret. Like the backup CronJob, it mounts the
-// site's uploads claim only when it needs it, which keeps it on the node of
-// the site's pod with node-local storage.
+// site's uploads claim only when it needs it, and then it must run on the
+// node of the site's pod: a ReadWriteOnce volume attaches to one node only.
 func RestoreJob(spec RestoreSpec) batchv1.Job {
 	labels := map[string]string{
 		"app.kubernetes.io/name":       "wordpress",
@@ -93,11 +94,14 @@ func RestoreJob(spec RestoreSpec) batchv1.Job {
 	//nolint:exhaustruct_v5 // an empty emptyDir is the default one
 	volumes := []corev1.Volume{volume("work", corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}})}
 
+	var affinity *corev1.Affinity
+
 	if spec.Plan.Uploads {
 		//nolint:exhaustruct_v5 // a claim name is all a PVC volume needs
 		volumes = append(volumes, volume("uploads", corev1.VolumeSource{
 			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: spec.Site.Claim},
 		}))
+		affinity = BesideSite(spec.Site.Name)
 	}
 
 	backoff, deadline, ttl := int32(0), int64(restoreDeadline), int32(restoreTTL)
@@ -120,8 +124,34 @@ func RestoreJob(spec RestoreSpec) batchv1.Job {
 					Containers:     []corev1.Container{importContainer(spec)},
 					Volumes:        volumes,
 					Tolerations:    spec.Tolerations,
+					Affinity:       affinity,
 				},
 			},
+		},
+	}
+}
+
+// BesideSite is the affinity that puts a pod on the node of the site's own
+// pod, the one kube.Pods selects: the pod that holds the uploads volume. With
+// a network-attached ReadWriteOnce volume, a pod on another node would wait
+// for the attach until its deadline; with node-local storage, the volume's
+// own node affinity already agrees.
+func BesideSite(site string) *corev1.Affinity {
+	//nolint:exhaustruct_v5 // only the pod affinity is set
+	return &corev1.Affinity{
+		PodAffinity: &corev1.PodAffinity{
+			RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
+				//nolint:exhaustruct_v5 // a selector on two labels
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{kube.LabelInstance: site},
+					MatchExpressions: []metav1.LabelSelectorRequirement{{
+						Key:      kube.LabelComponent,
+						Operator: metav1.LabelSelectorOpNotIn,
+						Values:   []string{kube.ComponentBackup},
+					}},
+				},
+				TopologyKey: corev1.LabelHostname,
+			}},
 		},
 	}
 }

@@ -84,3 +84,39 @@ func TestErrors(t *testing.T) {
 	code, _, _ = run(t, nil, "--verbose", "fail")
 	testutil.Equal(t, "success", code, 0)
 }
+
+// Every top-level command of docs/design.md, and the subcommands of the
+// groups, is registered on the root command, so a merge that drops one fails
+// here and not only in the command's own package tests. completion is added
+// by urfave/cli when the command runs; TestCompletion covers it.
+func TestCommandsRegistered(t *testing.T) {
+	t.Parallel()
+
+	root := cmd.New()
+
+	for name, subcommands := range map[string][]string{
+		"sites":   {"list", "show"},
+		"deploy":  nil,
+		"diff":    nil,
+		"build":   nil,
+		"promote": nil,
+		"admin":   nil,
+		"backup":  {"run", "list", "restore"},
+		"copy":    nil,
+	} {
+		command := root.Command(name)
+		testutil.True(t, name+" is registered", command != nil)
+
+		for _, sub := range subcommands {
+			testutil.True(t, name+" "+sub+" is registered", command.Command(sub) != nil)
+		}
+	}
+
+	code, out, _ := run(t, nil, "--help")
+	testutil.Equal(t, "--help exit code", code, 0)
+	testutil.Contains(t, "commands", out, "sites", "deploy", "diff", "build", "promote", "admin", "backup", "copy")
+
+	code, out, _ = run(t, nil, "backup", "--help")
+	testutil.Equal(t, "backup --help exit code", code, 0)
+	testutil.Contains(t, "backup commands", out, "run", "list", "restore")
+}

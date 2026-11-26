@@ -81,6 +81,16 @@ func (d Deps) restore(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
+	cluster, err := ClusterOf(env)
+	if err != nil {
+		return err
+	}
+
+	err = besidePod(ctx, cluster, plan, site.Name)
+	if err != nil {
+		return err
+	}
+
 	errw := cmd.Root().ErrWriter
 	Describe(errw, env.Env.Name, spec)
 
@@ -89,12 +99,23 @@ func (d Deps) restore(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	cluster, err := ClusterOf(env)
-	if err != nil {
-		return err
+	return d.Restore(ctx, cluster, spec, cmd.Root().Writer, errw)
+}
+
+// besidePod checks that a restore of the uploads has the site's running pod
+// to run beside: the pod holds the volume, and without one the Job would wait
+// until its deadline.
+func besidePod(ctx context.Context, cluster Cluster, plan domain.RestorePlan, site string) error {
+	if !plan.Uploads {
+		return nil
 	}
 
-	return d.Restore(ctx, cluster, spec, cmd.Root().Writer, errw)
+	_, err := cluster.RunningPod(ctx, site)
+	if err != nil {
+		return fmt.Errorf("restoring the uploads runs beside the site's pod: %w", err)
+	}
+
+	return nil
 }
 
 // resolveStamp parses --stamp, where latest is the newest run with a dump.

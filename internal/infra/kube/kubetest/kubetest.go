@@ -1,7 +1,8 @@
 // Package kubetest is a kube.Interface for tests: the real kube.Client over
 // client-go's fake clientset, with an executor that records every command,
-// understands the tar -x of kube.CopyFile and test -f, and hands everything
-// else to a handler the test sets.
+// understands the tar -x of kube.CopyFile, test -f and mv -f, refuses a
+// command with no stream as the kubelet does, and hands everything else to a
+// handler the test sets.
 package kubetest
 
 import (
@@ -122,6 +123,11 @@ type executor struct {
 
 // Exec records the call and runs it.
 func (e *executor) Exec(_ context.Context, req kube.ExecRequest) error {
+	err := req.Validate()
+	if err != nil {
+		return err
+	}
+
 	stdin, err := readAll(req.Stdin)
 	if err != nil {
 		return err
@@ -139,6 +145,8 @@ func (e *executor) Exec(_ context.Context, req kube.ExecRequest) error {
 	switch {
 	case isTestF(call.Command):
 		return e.testFile(call.Pod, call.Command[2])
+	case isMove(call.Command):
+		return e.move(call.Pod, call.Command[2], call.Command[3])
 	case len(call.Command) > 0 && call.Command[0] == "tar" && slices.Contains(call.Command, "-x"):
 		return e.untar(call)
 	case handler != nil:
@@ -161,6 +169,27 @@ func (e *executor) testFile(pod, file string) error {
 	if _, ok := e.files[pod+":"+file]; !ok {
 		return Exit(1)
 	}
+
+	return nil
+}
+
+// isMove reports whether cmd is mv -f <from> <to>.
+func isMove(cmd []string) bool {
+	return len(cmd) == 4 && cmd[0] == "mv" && cmd[1] == "-f"
+}
+
+// move answers mv -f: exit 1 when the file was never copied in.
+func (e *executor) move(pod, from, to string) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	data, ok := e.files[pod+":"+from]
+	if !ok {
+		return Exit(1)
+	}
+
+	delete(e.files, pod+":"+from)
+	e.files[pod+":"+to] = data
 
 	return nil
 }

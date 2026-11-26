@@ -4,11 +4,15 @@ package testutil
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/rahacloud/wpfleet"
 )
 
 // NoError stops the test when err is not nil.
@@ -121,4 +125,42 @@ func ReadFile(tb testing.TB, path string) string {
 	}
 
 	return string(data)
+}
+
+// pairLen is the length of an old/new replacement pair.
+const pairLen = 2
+
+// CustomChart writes the embedded chart to dir/name, as a fleet with its own
+// chart has it, with each old/new pair of replacements applied to its
+// values.yaml, and returns its path. A replacement that matches nothing stops
+// the test.
+func CustomChart(tb testing.TB, dir, name string, replacements ...string) string {
+	tb.Helper()
+
+	root, err := fs.Sub(wpfleet.Chart, wpfleet.ChartRoot)
+	if err != nil {
+		tb.Fatal(err)
+	}
+
+	dst := filepath.Join(dir, name)
+
+	err = os.CopyFS(dst, root)
+	if err != nil {
+		tb.Fatal(err)
+	}
+
+	valuesFile := filepath.Join(dst, "values.yaml")
+	content := ReadFile(tb, valuesFile)
+
+	for pair := range slices.Chunk(replacements, pairLen) {
+		if len(pair) != pairLen || !strings.Contains(content, pair[0]) {
+			tb.Fatalf("chart values.yaml: cannot replace %q", pair)
+		}
+
+		content = strings.Replace(content, pair[0], pair[1], 1)
+	}
+
+	WriteFile(tb, dst, "values.yaml", content)
+
+	return dst
 }

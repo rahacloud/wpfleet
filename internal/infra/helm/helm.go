@@ -244,19 +244,17 @@ func (c *Client) UpgradeInstall(
 		strategy = helmkube.StatusWatcherStrategy
 	}
 
-	history := action.NewHistory(cfg)
-	history.Max = 1
-
-	versions, err := history.Run(site)
+	versions, err := action.NewHistory(cfg).Run(site)
+	replace := uninstalled(newest(versions))
 
 	var rel releasei.Releaser
 
 	switch {
-	case errors.Is(err, driver.ErrReleaseNotFound) || uninstalled(versions):
+	case errors.Is(err, driver.ErrReleaseNotFound) || replace:
 		install := action.NewInstall(cfg)
 		install.ReleaseName = site
 		install.Namespace = namespace
-		install.Replace = uninstalled(versions)
+		install.Replace = replace
 		install.WaitStrategy = strategy
 		install.Timeout = c.Timeout
 		install.ServerSideApply = true
@@ -283,16 +281,22 @@ func (c *Client) UpgradeInstall(
 	return summarize(rel)
 }
 
-// LiveManifest returns the manifest of the release's current revision, hooks
-// left out.
+// LiveManifest returns the manifest of the release's last deployed revision,
+// the one the cluster runs, hooks left out. A newer revision that failed or
+// is pending was never fully applied, so it does not count; a release with
+// no deployed revision is ErrReleaseNotFound.
 func (c *Client) LiveManifest(site, namespace string) (string, error) {
 	cfg, err := c.configure(namespace)
 	if err != nil {
 		return "", err
 	}
 
-	rel, err := action.NewGet(cfg).Run(site)
-	if err != nil {
+	rel, err := cfg.Releases.Deployed(site)
+
+	switch {
+	case errors.Is(err, driver.ErrNoDeployedReleases):
+		return "", fmt.Errorf("release %s has no deployed revision: %w", site, ErrReleaseNotFound)
+	case err != nil:
 		return "", fmt.Errorf("reading release %s: %w", site, err)
 	}
 
@@ -359,16 +363,26 @@ func toV1(rel releasei.Releaser) (*releasev1.Release, error) {
 	}
 }
 
-// uninstalled reports whether the last revision was uninstalled with its
-// history kept.
-func uninstalled(versions []releasei.Releaser) bool {
-	if len(versions) == 0 {
-		return false
+// newest returns the revision with the highest number. The storage drivers
+// list revisions in their own order (the Secret driver by name, so v10 comes
+// before v9), not by revision.
+func newest(versions []releasei.Releaser) *releasev1.Release {
+	var last *releasev1.Release
+
+	for _, v := range versions {
+		r, err := toV1(v)
+		if err == nil && (last == nil || r.Version > last.Version) {
+			last = r
+		}
 	}
 
-	r, err := toV1(versions[len(versions)-1])
+	return last
+}
 
-	return err == nil && r.Info != nil && r.Info.Status == common.StatusUninstalled
+// uninstalled reports whether a revision was uninstalled with its history
+// kept.
+func uninstalled(r *releasev1.Release) bool {
+	return r != nil && r.Info != nil && r.Info.Status == common.StatusUninstalled
 }
 
 // SplitManifest splits a manifest into its documents, trimmed, empty ones

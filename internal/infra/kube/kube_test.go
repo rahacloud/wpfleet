@@ -16,6 +16,7 @@ import (
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
 
 	"github.com/rahacloud/wpfleet/internal/domain/fleet"
 	"github.com/rahacloud/wpfleet/internal/infra/kube"
@@ -118,13 +119,33 @@ func TestExec(t *testing.T) {
 	testutil.NoError(t, err)
 	testutil.Equal(t, "stdout", out.String(), "ran hello")
 
-	err = k.Exec(ctx, pod, "", []string{"false"}, nil, nil, nil)
+	err = k.Exec(ctx, pod, "", []string{"false"}, nil, io.Discard, nil)
 	code, ok := kube.ExitCode(err)
 	testutil.True(t, "exit error", ok)
 	testutil.Equal(t, "exit code", code, 3)
 
 	_, ok = kube.ExitCode(context.Canceled)
 	testutil.True(t, "a plain error has no exit code", !ok)
+}
+
+// The kubelet refuses an exec with no stream, so the remote executor refuses
+// it before it reaches the cluster, and the fake refuses it the same way.
+func TestExecNeedsAStream(t *testing.T) {
+	t.Parallel()
+
+	//nolint:exhaustruct_v5 // a request with only a command
+	req := kube.ExecRequest{Pod: pod, Command: []string{"true"}}
+	testutil.ErrorIs(t, req.Validate(), kube.ErrNoStreams)
+
+	//nolint:exhaustruct_v5 // the config is never used: the request is refused first
+	remote := kube.NewRemoteExecutor(&rest.Config{}, nil)
+	testutil.ErrorIs(t, remote.Exec(t.Context(), req), kube.ErrNoStreams)
+
+	req.Stderr = io.Discard
+	testutil.NoError(t, req.Validate())
+
+	k := kubetest.New(ns)
+	testutil.ErrorIs(t, k.Exec(t.Context(), pod, "", []string{"true"}, nil, nil, nil), kube.ErrNoStreams)
 }
 
 func TestCopyFile(t *testing.T) {
@@ -147,7 +168,7 @@ func TestCopyFile(t *testing.T) {
 	testutil.Equal(t, "container", last.Container, kube.WordPressContainer)
 	testutil.True(t, "extracts into /tmp", slices.Contains(last.Command, "/tmp"))
 
-	testutil.NoError(t, k.Exec(ctx, pod, "", []string{"test", "-f", phar}, nil, nil, nil))
+	testutil.NoError(t, k.Exec(ctx, pod, "", []string{"test", "-f", phar}, nil, io.Discard, nil))
 	testutil.ErrorIs(t, k.CopyFile(ctx, pod, local, "relative/path"), kube.ErrRelativePath)
 	testutil.ErrorIs(t, k.CopyFile(ctx, pod, filepath.Join(t.TempDir(), "missing"), "/tmp/x"), os.ErrNotExist)
 }

@@ -223,26 +223,10 @@ func Find(backups []Backup, stamp Stamp) (Backup, error) {
 	return backups[i], nil
 }
 
-// Cutoff is the stamp before which the CronJob deletes runs when it runs at
-// now with keepDays: now minus keepDays days, compared as stamps.
-func Cutoff(now time.Time, keepDays int) Stamp {
-	return NewStamp(now.Add(-time.Duration(keepDays) * day))
-}
-
 // Expires is when the CronJob's first run after that moment deletes a run
 // kept for keepDays.
 func Expires(stamp Stamp, keepDays int) time.Time {
 	return stamp.Time().Add(time.Duration(keepDays) * day)
-}
-
-// Expired returns the runs the CronJob deletes when it runs at now with
-// keepDays: those whose stamp sorts before the cutoff.
-func Expired(backups []Backup, now time.Time, keepDays int) []Backup {
-	cutoff := Cutoff(now, keepDays)
-
-	return slices.DeleteFunc(slices.Clone(backups), func(b Backup) bool {
-		return b.Stamp.Compare(cutoff) >= 0
-	})
 }
 
 // RestorePlan is what a restore does: which dump it imports, and with

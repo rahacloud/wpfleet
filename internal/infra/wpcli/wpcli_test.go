@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -52,6 +53,14 @@ func sum(s string) string {
 	return hex.EncodeToString(h[:])
 }
 
+func src(url, sha string) wpcli.Source {
+	return wpcli.Source{URL: url, SHA512: sha, AllowUnverified: false}
+}
+
+func unverified(url string) wpcli.Source {
+	return wpcli.Source{URL: url, SHA512: "", AllowUnverified: true}
+}
+
 func TestEnsureInCaches(t *testing.T) {
 	t.Parallel()
 
@@ -60,16 +69,49 @@ func TestEnsureInCaches(t *testing.T) {
 	ctx := t.Context()
 	url := srv.URL + pharPath
 
-	local, err := wpcli.EnsureIn(ctx, srv.Client(), dir, url, strings.ToUpper(sum(phar)))
+	local, err := wpcli.EnsureIn(ctx, srv.Client(), dir, src(url, strings.ToUpper(sum(phar))))
 	testutil.NoError(t, err)
 	testutil.Equal(t, "cached phar", testutil.ReadFile(t, local), phar)
-	testutil.True(t, "named as in the URL", strings.HasSuffix(local, "wp-cli-2.12.0.phar"))
+	testutil.Equal(t, "named by the sum", filepath.Base(local), "wp-cli-"+sum(phar)[:32]+".phar")
 
-	_, err = wpcli.EnsureIn(ctx, srv.Client(), dir, url, sum(phar))
+	_, err = wpcli.EnsureIn(ctx, srv.Client(), dir, src(url, sum(phar)))
+	testutil.NoError(t, err)
+	testutil.Equal(t, "downloads", hits.Load(), int32(1))
+}
+
+func TestEnsureInRefusesNoSum(t *testing.T) {
+	t.Parallel()
+
+	srv, hits := pharServer(t)
+	dir := t.TempDir()
+	url := srv.URL + pharPath
+
+	_, err := wpcli.EnsureIn(t.Context(), srv.Client(), dir, src(url, ""))
+	testutil.ErrorIs(t, err, wpcli.ErrNoChecksum)
+	testutil.Equal(t, "downloads", hits.Load(), int32(0))
+
+	local, err := wpcli.EnsureIn(t.Context(), srv.Client(), dir, unverified(url))
+	testutil.NoError(t, err)
+	testutil.Equal(t, "unverified phar", testutil.ReadFile(t, local), phar)
+}
+
+func TestEnsureInKeysTheCache(t *testing.T) {
+	t.Parallel()
+
+	srv, hits := pharServer(t)
+	dir := t.TempDir()
+	ctx := t.Context()
+
+	// A file cached for another URL with the same file name is never reused.
+	testutil.WriteFile(t, dir, "wp-cli-2.12.0.phar", "stale")
+
+	a, err := wpcli.EnsureIn(ctx, srv.Client(), dir, unverified(srv.URL+pharPath))
 	testutil.NoError(t, err)
 
-	_, err = wpcli.EnsureIn(ctx, srv.Client(), dir, url, "")
-	testutil.NoError(t, err)
+	b, err := wpcli.EnsureIn(ctx, srv.Client(), dir, unverified(srv.URL+"/mirror"+pharPath))
+	testutil.Error(t, err, "the mirror path is a 404, so it was really fetched")
+	testutil.Equal(t, "no entry for the failed URL", b, "")
+	testutil.Equal(t, "content", testutil.ReadFile(t, a), phar)
 	testutil.Equal(t, "downloads", hits.Load(), int32(1))
 }
 
@@ -81,23 +123,26 @@ func TestEnsureInRejects(t *testing.T) {
 	ctx := t.Context()
 	url := srv.URL + pharPath
 
-	_, err := wpcli.EnsureIn(ctx, srv.Client(), dir, url, "")
-	testutil.NoError(t, err)
-
-	// A cached file that no longer matches is fetched again, and a download
-	// that does not match is refused and not kept.
-	_, err = wpcli.EnsureIn(ctx, srv.Client(), dir, url, sum("other"))
+	// A download that does not match is refused and not kept.
+	_, err := wpcli.EnsureIn(ctx, srv.Client(), dir, src(url, sum("other")))
 	testutil.ErrorIs(t, err, wpcli.ErrChecksum)
-	testutil.Equal(t, "downloads", hits.Load(), int32(2))
+	testutil.Equal(t, "downloads", hits.Load(), int32(1))
 
 	entries, err := os.ReadDir(dir)
 	testutil.NoError(t, err)
 	testutil.Equal(t, "files left in the cache", len(entries), 0)
 
-	_, err = wpcli.EnsureIn(ctx, srv.Client(), dir, srv.URL+"/missing.phar", "")
+	// A cached file that no longer matches its sum is fetched again.
+	testutil.WriteFile(t, dir, "wp-cli-"+sum(phar)[:32]+".phar", "truncated")
+
+	local, err := wpcli.EnsureIn(ctx, srv.Client(), dir, src(url, sum(phar)))
+	testutil.NoError(t, err)
+	testutil.Equal(t, "refetched", testutil.ReadFile(t, local), phar)
+
+	_, err = wpcli.EnsureIn(ctx, srv.Client(), dir, unverified(srv.URL+"/missing.phar"))
 	testutil.Error(t, err, "a 404")
 
-	_, err = wpcli.EnsureIn(ctx, srv.Client(), dir, "http://[::1", "")
+	_, err = wpcli.EnsureIn(ctx, srv.Client(), dir, unverified("http://[::1"))
 	testutil.Error(t, err, "a bad URL")
 }
 
@@ -107,7 +152,7 @@ func TestEnsureUsesUserCache(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", cache)
 	t.Setenv("HOME", cache)
 
-	local, err := wpcli.Ensure(t.Context(), srv.URL+pharPath, "")
+	local, err := wpcli.Ensure(t.Context(), src(srv.URL+pharPath, sum(phar)))
 	testutil.NoError(t, err)
 	testutil.True(t, "under the user cache", strings.HasPrefix(local, cache))
 	testutil.Contains(t, "path", local, "wpfleet")
@@ -147,9 +192,13 @@ func TestRunner(t *testing.T) {
 	_, err = r.Output(ctx, pod, "option", "get", "siteurl")
 	testutil.NoError(t, err)
 
-	data, ok := k.File(pod, wpcli.RemotePath)
+	remote := wpcli.RemotePath(sum(phar))
+	testutil.Equal(t, "remote named by the sum", remote, "/tmp/wp-cli-"+sum(phar)[:32]+".phar")
+
+	data, ok := k.File(pod, remote)
 	testutil.True(t, "phar copied", ok)
 	testutil.Equal(t, "phar in pod", string(data), phar)
+	testutil.DeepEqual(t, "only the renamed phar is left", k.Files(), []string{pod + ":" + remote})
 
 	// A second runner finds the phar the first one copied.
 	_, err = wpcli.NewRunner(k, local).Output(ctx, pod, "core", "version")
@@ -165,13 +214,53 @@ func TestRunner(t *testing.T) {
 		counts[c.Command[0]]++
 
 		if c.Command[0] == "php" {
-			testutil.DeepEqual(t, "wp-cli command", c.Command[:4], wpcli.Command())
+			testutil.DeepEqual(t, "wp-cli command", c.Command[:4], wpcli.Command(remote))
 			testutil.Equal(t, "container", c.Container, kube.WordPressContainer)
 		}
 	}
 
 	testutil.Equal(t, "copies", counts["tar"], 1)
+	testutil.Equal(t, "renames", counts["mv"], 1)
 	testutil.Equal(t, "checks", counts["test"], 2)
-	testutil.DeepEqual(t, "Command", wpcli.Command("cli", "version"),
-		[]string{"php", "/tmp/wp-cli.phar", "--allow-root", "--path=/var/www/html", "cli", "version"})
+	testutil.DeepEqual(t, "Command", wpcli.Command("/tmp/x.phar", "cli", "version"),
+		[]string{"php", "/tmp/x.phar", "--allow-root", "--path=/var/www/html", "cli", "version"})
+}
+
+// A phar left by an interrupted copy, or one from another wp-cli, is never
+// taken for the local one.
+func TestRunnerIgnoresOtherPhars(t *testing.T) {
+	t.Parallel()
+
+	local := testutil.WriteFile(t, t.TempDir(), "wp-cli.phar", phar)
+	k := kubetest.New("wp-staging")
+	k.Handle(fakeWP)
+
+	// Seed the pod with a truncated phar under the old fixed name and under
+	// the temporary name pattern, through the fake's own copy.
+	partial := testutil.WriteFile(t, t.TempDir(), "partial.phar", "<?php // trunc")
+	testutil.NoError(t, k.CopyFile(t.Context(), pod, partial, "/tmp/wp-cli.phar"))
+	testutil.NoError(t, k.CopyFile(t.Context(), pod, partial, wpcli.RemotePath(sum(phar))+".0011.part"))
+
+	_, err := wpcli.NewRunner(k, local).Output(t.Context(), pod, "core", "version")
+	testutil.NoError(t, err)
+
+	data, ok := k.File(pod, wpcli.RemotePath(sum(phar)))
+	testutil.True(t, "phar copied", ok)
+	testutil.Equal(t, "the local phar", string(data), phar)
+}
+
+// The probe and the commands always attach a stream: the kubelet refuses an
+// exec with none, and kubetest refuses it the same way.
+func TestRunnerAttachesStreams(t *testing.T) {
+	t.Parallel()
+
+	local := testutil.WriteFile(t, t.TempDir(), "wp-cli.phar", phar)
+	k := kubetest.New("wp-staging")
+	k.Handle(fakeWP)
+
+	err := wpcli.NewRunner(k, local).Run(t.Context(), pod, io.Discard, nil, "core", "version")
+	testutil.NoError(t, err)
+
+	err = k.Exec(t.Context(), pod, kube.WordPressContainer, []string{"true"}, nil, nil, nil)
+	testutil.ErrorIs(t, err, kube.ErrNoStreams)
 }

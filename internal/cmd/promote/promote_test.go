@@ -11,6 +11,7 @@ import (
 	"github.com/rahacloud/wpfleet/internal/cmd/cmdutil"
 	"github.com/rahacloud/wpfleet/internal/cmd/promote"
 	"github.com/rahacloud/wpfleet/internal/domain/fleet"
+	"github.com/rahacloud/wpfleet/internal/infra/values"
 	"github.com/rahacloud/wpfleet/internal/testutil"
 )
 
@@ -162,6 +163,18 @@ func TestPromoteRefusals(t *testing.T) {
 	_, err := run(t, "-f", dir, "promote", "shop", "news", "--to", "production")
 	testutil.ErrorIs(t, err, fleet.ErrNoImage)
 	testutil.Equal(t, "nothing is written", read(t, dir, "environments/production/shop.yaml"), before)
+
+	// blog's production file cannot be edited in place (a flow mapping
+	// without tag): shop, planned first, must not be written either.
+	blog := "site: blog\nimage: {repository: r.example.com/blog}\n"
+	testutil.WriteFile(t, dir, "environments/production/blog.yaml", blog)
+	testutil.WriteFile(t, dir, "environments/staging/blog.yaml",
+		"site: blog\nimage:\n  repository: r.example.com/blog\n  tag: v4\n")
+
+	_, err = run(t, "-f", dir, "promote", "shop", "blog", "--to", "production")
+	testutil.ErrorIs(t, err, values.ErrUnsupportedLayout)
+	testutil.Equal(t, "shop is not written", read(t, dir, "environments/production/shop.yaml"), before)
+	testutil.Equal(t, "blog is not written", read(t, dir, "environments/production/blog.yaml"), blog)
 
 	_, err = run(t, "-f", dir, "promote", "shop", "--to", "development")
 	testutil.ErrorIs(t, err, fleet.ErrNoPromotionSource)

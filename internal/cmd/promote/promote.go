@@ -62,7 +62,7 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	plans, files, err := plan(f, cmd.String(flagTo), names)
+	plans, edits, err := plan(f, cmd.String(flagTo), names)
 	if err != nil {
 		return err
 	}
@@ -73,14 +73,14 @@ func run(ctx context.Context, cmd *cli.Command) error {
 
 	for i, p := range plans {
 		if p.Changed() {
-			err := values.SetImage(files[i], p.Target.Repository, p.Target.Tag)
+			err := edits[i].Write()
 			if err != nil {
 				errs = append(errs, err)
 
 				continue
 			}
 
-			slog.DebugContext(ctx, "promoted", "site", p.Site, "image", p.Target.String(), "file", files[i])
+			slog.DebugContext(ctx, "promoted", "site", p.Site, "image", p.Target.String(), "file", edits[i].Path)
 		}
 
 		results = append(results, Result{PromotionPlan: p, Changed: p.Changed()})
@@ -96,9 +96,11 @@ func run(ctx context.Context, cmd *cli.Command) error {
 	return errors.Join(append(errs, err)...)
 }
 
-// plan loads the source and target site files of every named site and plans
-// their promotion. It returns the plans and the target files to edit.
-func plan(f *cmdutil.Fleet, to string, names []string) ([]fleet.PromotionPlan, []string, error) {
+// plan loads the source and target site files of every named site, plans
+// their promotion and computes the edit of every target file that changes, so
+// that a site whose file cannot be edited refuses the promotion before any
+// file is written. It returns the plans and the edits, by index.
+func plan(f *cmdutil.Fleet, to string, names []string) ([]fleet.PromotionPlan, []values.ImageEdit, error) {
 	target, err := f.Fleet.Environment(to)
 	if err != nil {
 		return nil, nil, err
@@ -120,7 +122,7 @@ func plan(f *cmdutil.Fleet, to string, names []string) ([]fleet.PromotionPlan, [
 	}
 
 	plans := make([]fleet.PromotionPlan, 0, len(names))
-	files := make([]string, 0, len(names))
+	edits := make([]values.ImageEdit, 0, len(names))
 
 	var errs []error
 
@@ -132,15 +134,26 @@ func plan(f *cmdutil.Fleet, to string, names []string) ([]fleet.PromotionPlan, [
 			continue
 		}
 
+		var e values.ImageEdit
+
+		if p.Changed() {
+			e, err = values.PlanImage(targetSites[i].File(), p.Target.Repository, p.Target.Tag)
+			if err != nil {
+				errs = append(errs, err)
+
+				continue
+			}
+		}
+
 		plans = append(plans, p)
-		files = append(files, targetSites[i].File())
+		edits = append(edits, e)
 	}
 
 	if len(errs) > 0 {
 		return nil, nil, errors.Join(errs...)
 	}
 
-	return plans, files, nil
+	return plans, edits, nil
 }
 
 // planSite plans one site from its own files only: the image a promotion

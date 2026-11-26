@@ -69,9 +69,20 @@ type Build struct {
 type WPCLI struct {
 	// URL is the phar's download URL.
 	URL string `json:"url" koanf:"url"`
-	// SHA512 is the phar's hex SHA-512; checked when set.
+	// SHA512 is the phar's hex SHA-512; the phar is refused when it does
+	// not match. The default is the published sum of the default URL's phar.
 	SHA512 string `json:"sha512" koanf:"sha512"`
+	// AllowUnverified lets an empty SHA512 run the phar unchecked.
+	AllowUnverified bool `json:"allowUnverified" koanf:"allowUnverified"`
 }
+
+// DefaultWPCLIURL is the wp-cli release wpfleet uses by default.
+const DefaultWPCLIURL = "https://github.com/wp-cli/wp-cli/releases/download/v2.12.0/wp-cli-2.12.0.phar"
+
+// DefaultWPCLISHA512 is the SHA-512 that wp-cli publishes for the phar at
+// DefaultWPCLIURL (the .sha512 file of the v2.12.0 release).
+const DefaultWPCLISHA512 = "be928f6b8ca1e8dfb9d2f4b75a13aa4aee0896f8a9a0a1c45cd5d2c98605e617" +
+	"2e6d014dda2e27f88c98befc16c040cbb2bd1bfa121510ea5cdf5f6a30fe8832"
 
 // Environment is one entry of environments.
 type Environment struct {
@@ -110,13 +121,10 @@ type S3 struct {
 // Default is the configuration before the file and the environment apply.
 func Default() Config {
 	return Config{
-		Chart:    "",
-		Registry: "",
-		Build:    Build{Base: "docker.io/library/wordpress:7.0.2-php8.4-apache"},
-		WPCLI: WPCLI{
-			URL:    "https://github.com/wp-cli/wp-cli/releases/download/v2.12.0/wp-cli-2.12.0.phar",
-			SHA512: "",
-		},
+		Chart:        "",
+		Registry:     "",
+		Build:        Build{Base: "docker.io/library/wordpress:7.0.2-php8.4-apache"},
+		WPCLI:        WPCLI{URL: DefaultWPCLIURL, SHA512: DefaultWPCLISHA512, AllowUnverified: false},
 		Environments: nil,
 		Backup:       Backup{S3: S3{Endpoint: "", Bucket: "", Region: ""}},
 	}

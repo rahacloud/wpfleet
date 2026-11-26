@@ -6,6 +6,9 @@ import (
 	"testing"
 
 	chartv2 "helm.sh/helm/v4/pkg/chart/v2"
+	releasei "helm.sh/helm/v4/pkg/release"
+	"helm.sh/helm/v4/pkg/release/common"
+	releasev1 "helm.sh/helm/v4/pkg/release/v1"
 
 	"github.com/rahacloud/wpfleet/internal/infra/helm"
 	"github.com/rahacloud/wpfleet/internal/infra/kube"
@@ -75,6 +78,30 @@ func TestRender(t *testing.T) {
 	testutil.Error(t, err, "missing values file")
 }
 
+// The time zones are values with neutral defaults, and the backup CronJob
+// runs beside the site's pod, which holds the uploads volume.
+func TestRenderTimeZonesAndBackup(t *testing.T) {
+	t.Parallel()
+
+	client := helm.New(embedded(t), kube.Target{Kubeconfig: "", Context: "", Namespace: namespace})
+	backup := testutil.WriteFile(t, t.TempDir(), "backup.yaml",
+		"backup:\n  enabled: true\n  s3:\n    endpoint: https://s3.example.com\n    bucket: backups\n")
+
+	manifest, err := client.Render(t.Context(), site, namespace, append(testValues(), backup))
+	testutil.NoError(t, err)
+	testutil.Contains(t, "manifest", manifest,
+		"date.timezone = UTC\n", `timeZone: "Etc/UTC"`,
+		"podAffinity:", "topologyKey: kubernetes.io/hostname", "app.kubernetes.io/instance: "+site)
+
+	zones := testutil.WriteFile(t, t.TempDir(), "zones.yaml",
+		"php:\n  timezone: Europe/Berlin\nbackup:\n  timeZone: \"\"\n")
+
+	manifest, err = client.Render(t.Context(), site, namespace, append(testValues(), backup, zones))
+	testutil.NoError(t, err)
+	testutil.Contains(t, "manifest", manifest, "date.timezone = Europe/Berlin\n")
+	testutil.NotContains(t, "manifest", manifest, "timeZone:")
+}
+
 func TestUpgradeInstall(t *testing.T) {
 	t.Parallel()
 
@@ -112,6 +139,62 @@ func TestUpgradeInstall(t *testing.T) {
 
 	_, err = client.UpgradeInstall(ctx, site, namespace, []string{filepath.Join(t.TempDir(), "missing.yaml")}, false)
 	testutil.Error(t, err, "missing values file")
+}
+
+// diff compares with what the cluster runs: the last deployed revision, not
+// a newer one that failed.
+func TestLiveManifestIsTheDeployedRevision(t *testing.T) {
+	t.Parallel()
+
+	client := helm.NewInMemory(embedded(t))
+	ctx := t.Context()
+
+	_, err := client.UpgradeInstall(ctx, site, namespace, testValues(), false)
+	testutil.NoError(t, err)
+
+	deployed, err := client.LiveManifest(site, namespace)
+	testutil.NoError(t, err)
+
+	testutil.NoError(t, client.Store(namespace, record(2, common.StatusFailed, "kind: NeverApplied")))
+
+	live, err := client.LiveManifest(site, namespace)
+	testutil.NoError(t, err)
+	testutil.Equal(t, "the deployed revision's manifest", live, deployed)
+
+	// A release whose only revision failed, or was uninstalled, runs nothing.
+	for _, status := range []common.Status{common.StatusFailed, common.StatusUninstalled} {
+		other := helm.NewInMemory(embedded(t))
+		testutil.NoError(t, other.Store(namespace, record(1, status, "kind: Gone")))
+
+		_, err = other.LiveManifest(site, namespace)
+		testutil.ErrorIs(t, err, helm.ErrReleaseNotFound)
+	}
+}
+
+// The storage lists revisions in its own order; the newest is the one with
+// the highest number, so v12 wins over v9 and v10.
+func TestNewest(t *testing.T) {
+	t.Parallel()
+
+	versions := []releasei.Releaser{
+		record(10, common.StatusSuperseded, ""),
+		record(12, common.StatusUninstalled, ""),
+		record(9, common.StatusSuperseded, ""),
+	}
+	testutil.Equal(t, "newest", helm.Newest(versions).Version, 12)
+	testutil.True(t, "none", helm.Newest(nil) == nil)
+}
+
+// record is a stored revision of the test site.
+func record(version int, status common.Status, manifest string) *releasev1.Release {
+	//nolint:exhaustruct_v5 // a stored record needs only these
+	return &releasev1.Release{
+		Name:      site,
+		Namespace: namespace,
+		Version:   version,
+		Manifest:  manifest,
+		Info:      &releasev1.Info{Status: status},
+	}
 }
 
 func TestSplitManifest(t *testing.T) {

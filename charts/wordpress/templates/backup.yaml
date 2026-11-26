@@ -2,9 +2,10 @@
 {{- $site := include "wordpress.site" . }}
 {{- $prefix := printf "%s/%s" .Release.Namespace $site }}
 # Every night: dump the site's database, then copy it and the uploads to S3.
-# The pod mounts the site's uploads claim, which is node-local and
-# ReadWriteOnce, so the scheduler puts it on the node of the site's own pod
-# (ReadWriteOnce allows several pods on one node). Layout in the bucket:
+# The pod mounts the site's uploads claim, which is usually ReadWriteOnce, so
+# a pod affinity puts it on the node of the site's own pod (ReadWriteOnce
+# allows several pods on one node, but attaches to one node only). Layout in
+# the bucket:
 #   <namespace>/<site>/database/<stamp>.sql.gz
 #   <namespace>/<site>/uploads/current/...         a mirror of the volume
 #   <namespace>/<site>/uploads/changed/<stamp>/... what that night replaced or deleted
@@ -21,7 +22,9 @@ spec:
   # The minute comes from the site name, so the sites do not all hit MariaDB
   # and the bucket at the same moment.
   schedule: {{ .Values.backup.schedule | default (printf "%d %d * * *" (mod (adler32sum $site) 60) (int .Values.backup.hour)) | quote }}
-  timeZone: {{ .Values.backup.timeZone }}
+  {{- with .Values.backup.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -129,6 +132,17 @@ spec:
               persistentVolumeClaim:
                 claimName: {{ .Values.uploads.existingClaim | default (printf "%s-uploads" (include "wordpress.fullname" .)) }}
                 readOnly: true
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - topologyKey: kubernetes.io/hostname
+                  labelSelector:
+                    matchLabels:
+                      app.kubernetes.io/instance: {{ $site }}
+                    matchExpressions:
+                      - key: app.kubernetes.io/component
+                        operator: NotIn
+                        values: [backup]
           {{- with .Values.tolerations }}
           tolerations:
             {{- toYaml . | nindent 12 }}

@@ -21,6 +21,10 @@ import (
 // ErrRelativePath is returned for a remote path that is not absolute.
 var ErrRelativePath = errors.New("remote path must be absolute")
 
+// ErrNoStreams is returned for an exec request with no stream attached, which
+// the kubelet refuses ("you must specify at least 1 of stdin, stdout, stderr").
+var ErrNoStreams = errors.New("exec needs at least one of stdin, stdout and stderr")
+
 // ExecRequest is one command to run in a container.
 type ExecRequest struct {
 	// Namespace, Pod and Container say where the command runs. An empty
@@ -31,6 +35,15 @@ type ExecRequest struct {
 	// Stdin, Stdout and Stderr are attached when not nil.
 	Stdin          io.Reader
 	Stdout, Stderr io.Writer
+}
+
+// Validate refuses a request the kubelet would refuse: one with no stream.
+func (r ExecRequest) Validate() error {
+	if r.Stdin == nil && r.Stdout == nil && r.Stderr == nil {
+		return fmt.Errorf("%w: %v in %s", ErrNoStreams, r.Command, r.Pod)
+	}
+
+	return nil
 }
 
 // Executor runs a command in a container. The remote one streams through the
@@ -55,6 +68,11 @@ func NewRemoteExecutor(config *rest.Config, client rest.Interface) *RemoteExecut
 
 // Exec runs the request and waits for the command to exit.
 func (r *RemoteExecutor) Exec(ctx context.Context, req ExecRequest) error {
+	err := req.Validate()
+	if err != nil {
+		return err
+	}
+
 	opts := &corev1.PodExecOptions{ //nolint:exhaustruct_v5 // TypeMeta is filled in by the codec
 		Container: req.Container,
 		Command:   req.Command,

@@ -16,6 +16,9 @@ linters:
     - wsl_v5 # whitespace rules produce more churn than signal
   settings:
     revive:
+      # Without this, listing rules turns off every rule revive runs by
+      # default (context-as-argument, error-strings and the others).
+      enable-default-rules: true
       rules:
         - name: exported
           arguments: ["checkPrivateReceivers", "disableStutteringCheck"]

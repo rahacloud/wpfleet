@@ -12,6 +12,7 @@ import (
 	bt "github.com/rahacloud/wpfleet/internal/cmd/backup/backuptest"
 	domain "github.com/rahacloud/wpfleet/internal/domain/backup"
 	"github.com/rahacloud/wpfleet/internal/infra/kube"
+	"github.com/rahacloud/wpfleet/internal/infra/kube/kubetest"
 	"github.com/rahacloud/wpfleet/internal/infra/s3"
 	"github.com/rahacloud/wpfleet/internal/testutil"
 )
@@ -157,6 +158,7 @@ func TestRestoreDatabase(t *testing.T) {
 	pod := job.Spec.Template.Spec
 	testutil.Equal(t, "volumes", len(pod.Volumes), 1)
 	testutil.Equal(t, "toleration", pod.Tolerations[0].Value, "wordpress")
+	testutil.True(t, "no affinity without the uploads", pod.Affinity == nil)
 
 	fetch, imp := pod.InitContainers[0], pod.Containers[0]
 	testutil.Equal(t, "rclone image", fetch.Image, "docker.io/rclone/rclone:1.72.0")
@@ -195,13 +197,29 @@ func TestRestoreUploads(t *testing.T) {
 	h := bt.New(t, objects())
 	h.WriteSite(t, bt.Staging, "blog", "backup:\n  s3:\n    endpoint: http://minio.backup.svc:9000\n")
 
-	testutil.NoError(t, h.Run(t, backup.NewCommand(h.Deps), "",
-		"-e", bt.Staging, "backup", "restore", "blog", "--stamp", "20261125T031500Z", "--uploads", "-y"))
+	restore := func() error {
+		return h.Run(t, backup.NewCommand(h.Deps), "",
+			"-e", bt.Staging, "backup", "restore", "blog", "--stamp", "20261125T031500Z", "--uploads", "-y")
+	}
+
+	// Without a running pod of the site, the volume's holder, nothing starts.
+	err := restore()
+	testutil.ErrorIs(t, err, kube.ErrNoRunningPod)
+	testutil.Equal(t, "no job", len(h.Jobs(t, bt.Staging)), 0)
+
+	h.Seed(t, bt.Staging, kubetest.RunningPod(bt.Namespace(bt.Staging), "blog", "blog-1"))
+	testutil.NoError(t, restore())
 
 	testutil.Contains(t, "warning", h.Err.String(), "wound back through 1 later runs")
 
 	pod := h.Jobs(t, bt.Staging)[0].Spec.Template.Spec
 	testutil.Equal(t, "claim", pod.Volumes[1].PersistentVolumeClaim.ClaimName, "blog-uploads")
+	testutil.DeepEqual(t, "beside the site's pod", pod.Affinity, backup.BesideSite("blog"))
+
+	term := pod.Affinity.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution[0]
+	testutil.Equal(t, "same node", term.TopologyKey, "kubernetes.io/hostname")
+	testutil.Equal(t, "the site's pods", term.LabelSelector.MatchLabels[kube.LabelInstance], "blog")
+	testutil.DeepEqual(t, "not a backup pod", term.LabelSelector.MatchExpressions[0].Values, []string{"backup"})
 
 	fetch := pod.InitContainers[0]
 	testutil.Equal(t, "mounts", len(fetch.VolumeMounts), 2)
