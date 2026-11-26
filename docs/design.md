@@ -56,7 +56,7 @@ Configuration loads with koanf: defaults, then `wpfleet.yaml`, then environment 
 
 ## Commands
 
-Global flags: `--fleet, -f` (the fleet directory, default `.`, env `WPFLEET_FLEET`) and `--env, -e` (the environment, env `WPFLEET_ENV`). Output for people is a table; `--output json` gives JSON for scripts.
+Global flags: `--fleet, -f` (the fleet directory, default `.`, env `WPFLEET_FLEET`), `--env, -e` (the environment, env `WPFLEET_ENV`), `--output, -o` (`table`, the default, or `json`) and `--verbose, -v` (debug logs on stderr, env `WPFLEET_VERBOSE`). Output for people is a table; `--output json` gives JSON for scripts. A failing command prints `wpfleet: <error>` on stderr and exits 1; a command that needs another exit code without a message, like `diff`, returns `cli.Exit("", code)`. `wpfleet completion bash|zsh|fish` prints a shell completion script.
 
 | Command | What it does |
 | --- | --- |
@@ -77,18 +77,21 @@ Global flags: `--fleet, -f` (the fleet directory, default `.`, env `WPFLEET_FLEE
 ```text
 cmd/wpfleet/main.go                    thin entrypoint: cmd.Execute()
 charts.go                              package wpfleet: //go:embed all:charts/wordpress
-internal/cmd/                          root command, global flags, output helpers
+internal/cmd/                          root command; Execute and Run print the error and set the exit code
+internal/cmd/cmdutil/                  global flags, table/JSON output, loading the fleet and one environment
 internal/cmd/sites/ deploy/ build/ promote/ admin/ backup/ copy/
 internal/domain/fleet/                 Fleet, Environment, Site, host derivation, image refs, promotion plan
 internal/domain/backup/                stamps, retention, restore plans (pure)
 internal/infra/config/                 koanf loading of wpfleet.yaml
 internal/infra/values/                 read and merge values files; edit a site file keeping comments
 internal/infra/kube/                   client-go: pods of a site, exec, copy into a pod, Jobs from CronJobs, logs
+internal/infra/kube/kubetest/          kube.Interface on the fake clientset with a recording exec, for tests
 internal/infra/helm/                   Helm Go SDK: render, upgrade --install, live manifest, release status
 internal/infra/wpcli/                  fetch and verify wp-cli.phar, copy it into a pod, run it
 internal/infra/docker/                 docker build from a tar stream, docker push (os/exec)
 internal/infra/s3/                     list backups (minio-go)
 internal/infra/assets/                 embedded PHP: the page builder fix-up for copy
+internal/testutil/                     assertions and file helpers the tests share
 ```
 
 `internal/domain` imports nothing else from this module and does no I/O. `internal/infra` may import domain. `internal/cmd` wires them.
@@ -96,9 +99,13 @@ internal/infra/assets/                 embedded PHP: the page builder fix-up for
 ### Contracts between packages
 
 - `fleet.Site` has `Name`, `Env` (an `Environment`) and `ValuesFiles []string` (shared first). `fleet.Host(values)` gives the canonical host from merged values exactly as the chart's `wordpress.hosts` helper does: the first of `domains`, else `<site><hostLabelSuffix>.<domainSuffix>`.
-- `values.Load(files ...string) (Values, error)` merges like Helm (later files win, maps merge deeply, lists replace). `values.SetImage(path, repository, tag string) error` edits one site file in place and keeps every comment, the key order and the rest of the file byte for byte.
-- `kube.Client` is made per environment (kubeconfig, context, namespace). Pods of a site are selected by `app.kubernetes.io/instance=<site>` and `app.kubernetes.io/component` not equal to `backup`.
-- `wpcli.Run(ctx, kube, site, args...)` copies the phar into the site's running pod once (as `/tmp/wp-cli.phar`) and runs `php /tmp/wp-cli.phar --allow-root --path=/var/www/html <args>`.
+- `fleet.DiscoverSites(env, fileNames)` turns a listing of an environment's values directory into sites: every `*.yaml` except `_shared.yaml`, named by the file's stem, which must be a DNS label. `values.Sites(env)` reads the directory and calls it. `fleet.PlanPromotion(site, from, to, source, target)` compares the image of two site values and says what a promotion changes; `fleet.ParseImageRef` and `ImageRef.String` split and join `repository:tag@digest`. Domain code reads values through the small `fleet.Values` interface (`String`, `StringSlice`), which `values.Values` implements.
+- `values.Load(files ...string) (Values, error)` merges like Helm (later files win, maps merge deeply, lists replace, an explicit null is kept for Helm). `Values` has `String(path)`, `StringSlice(path)`, `Bool(path)`, `Lookup(path)` and the generic `values.Get[T](v, path)`; paths are dot-separated. `values.SetImage(path, repository, tag string) error` edits one site file in place and keeps every comment, the key order and the rest of the file byte for byte; it adds a missing key or `image:` block, and refuses with `ErrUnsupportedLayout` a layout it cannot edit that way (a block scalar, an anchor, a flow mapping without the key) instead of rewriting the file.
+- `kube.Client` is made per environment with `kube.New(kube.TargetFor(env))` (kubeconfig, context, namespace; the usual loading rules when the kubeconfig is empty). Pods of a site are selected by `app.kubernetes.io/instance=<site>` and `app.kubernetes.io/component` not equal to `backup`. Commands depend on the interfaces, not the struct: `kube.Execer` (`Exec`, `CopyFile`), `kube.Pods` (`SitePods`, `RunningPod`), `kube.Jobs` (`JobFromCronJob`, `WaitJob`, `JobPods`, `StreamLogs`) and `kube.Interface`, which is all three plus `Namespace()`. `Exec` streams over WebSocket and falls back to SPDY; `kube.ExitCode(err)` reads a command's non-zero exit code. `CopyFile` copies into the `wordpress` container through `tar -x`. `kubetest.New(namespace, objects...)` gives a `kube.Interface` on the fake clientset whose exec records every call, understands `tar -x` and `test -f`, and hands other commands to a handler the test sets.
+- `helm.LoadChart(path)` loads a chart directory or archive, or the embedded chart when the path is empty. `helm.New(chart, target)` gives a client with `Render(ctx, site, namespace, valuesFiles)` (client-side, like `helm template`, hooks left out), `UpgradeInstall(ctx, site, namespace, valuesFiles, wait)` (installs when there is no release, else upgrades with the given values only; `wait` waits for readiness, otherwise only for hooks), `LiveManifest(site, namespace)` (hooks left out) and `Status(site, namespace)` (revision, status, chart version, updated). A missing release is `helm.ErrReleaseNotFound`. Releases are stored in Secrets, as the helm CLI does.
+- `wpcli.Ensure(ctx, url, sha512)` downloads the phar once into the user's cache (`wpfleet/` under `os.UserCacheDir()`) and checks its SHA-512 when one is configured. `wpcli.NewRunner(kube, phar)` returns a runner whose `Run(ctx, pod, stdout, stderr, args...)` and `Output(ctx, pod, args...)` copy the phar into the pod once (as `/tmp/wp-cli.phar`, checked with `test -f`) and run `php /tmp/wp-cli.phar --allow-root --path=/var/www/html <args>` in the `wordpress` container.
+- `cmdutil.OpenEnv(cmd)` loads `wpfleet.yaml` from `--fleet`, selects `--env`, discovers its sites and makes its kube client without contacting the cluster; the returned `Env` has `Sites`, `Kube` (a `kube.Interface`), `Site(name)`, `SelectSites(names, all)`, `Values(site)`, `Helm()` (loads the chart on first use) and `WPCLI(ctx, kube)`. `cmdutil.LoadFleet(cmd)` loads the fleet without choosing an environment. `cmdutil.Print(cmd, rows, columns...)` writes rows of any type as a table, or as JSON by their `json` tags with `--output json`.
+- Configuration: `WPFLEET_BACKUP__S3__BUCKET` sets `backup.s3.bucket`, and so on. `WPFLEET_FLEET`, `WPFLEET_ENV`, `WPFLEET_OUTPUT`, `WPFLEET_VERBOSE` and the two S3 key variables are never read as configuration keys. Validation requires unique, non-empty environment names, a namespace for each, and a `promoteFrom` that names another environment.
 
 ## The chart
 

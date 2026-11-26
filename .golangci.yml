@@ -22,6 +22,9 @@ linters:
         - name: package-comments
         - name: var-naming
     wrapcheck:
+      # Errors from this module's own packages already carry their context.
+      ignore-package-globs:
+        - github.com/rahacloud/wpfleet/*
       ignore-sigs:
         - .Errorf(
         - errors.New(
