@@ -121,6 +121,13 @@ wordpress:
   accessibleHosts: []
   # PHP appended to wp-config.php through WORDPRESS_CONFIG_EXTRA.
   configExtra: ""
+  # Mounts the must-use plugin wp-content/mu-plugins/wpfleet-login.php
+  # (files/wpfleet-login.php), which answers the one-time login links of
+  # `wpfleet admin`: /?wpfleet-login=<token> logs in once, within 60 seconds,
+  # as the user the link was made for. The plugin only finds tokens that wp-cli
+  # stored as a SHA-256 hash in the database, so it opens nothing by itself.
+  # Turn it off where nobody should get in without a password.
+  oneTimeLogin: true
   # When set, replaces the image's .htaccess for this environment only, e.g.
   # to drop an IP allowlist that only makes sense on the old servers. Mounted
   # read-only, so WordPress cannot rewrite it when permalinks are saved.

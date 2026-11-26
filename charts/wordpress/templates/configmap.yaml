@@ -39,6 +39,10 @@ data:
     {{- with .Values.wordpress.configExtra }}
     {{- . | nindent 4 }}
     {{- end }}
+  {{- if .Values.wordpress.oneTimeLogin }}
+  wpfleet-login.php: |
+    {{- .Files.Get "files/wpfleet-login.php" | nindent 4 }}
+  {{- end }}
   {{- with .Values.wordpress.htaccess }}
   htaccess: |
     {{- . | nindent 4 }}

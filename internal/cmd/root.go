@@ -15,6 +15,7 @@ import (
 	"github.com/carlmjohnson/versioninfo"
 	"github.com/urfave/cli/v3"
 
+	"github.com/rahacloud/wpfleet/internal/cmd/admin"
 	"github.com/rahacloud/wpfleet/internal/cmd/build"
 	"github.com/rahacloud/wpfleet/internal/cmd/cmdutil"
 	"github.com/rahacloud/wpfleet/internal/cmd/deploy"
@@ -43,7 +44,7 @@ func New() *cli.Command {
 			deploy.Command(), deploy.DiffCommand(),
 			build.Command(),
 			promote.Command(),
-			// admin: admin.Command(),
+			admin.Command(),
 			// backup: backup.Command(),
 			// copy: copy.Command(),
 		},
