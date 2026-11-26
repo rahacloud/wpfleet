@@ -73,6 +73,12 @@ spec:
             - name: config
               mountPath: /etc/wordpress/config-extra.php
               subPath: config-extra.php
+            {{- if .Values.wordpress.oneTimeLogin }}
+            - name: config
+              mountPath: /var/www/html/wp-content/mu-plugins/wpfleet-login.php
+              subPath: wpfleet-login.php
+              readOnly: true
+            {{- end }}
             {{- if .Values.wordpress.htaccess }}
             - name: config
               mountPath: /var/www/html/.htaccess

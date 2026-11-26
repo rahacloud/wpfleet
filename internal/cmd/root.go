@@ -15,6 +15,7 @@ import (
 	"github.com/carlmjohnson/versioninfo"
 	"github.com/urfave/cli/v3"
 
+	"github.com/rahacloud/wpfleet/internal/cmd/admin"
 	"github.com/rahacloud/wpfleet/internal/cmd/cmdutil"
 )
 
@@ -34,12 +35,12 @@ func New() *cli.Command {
 		ErrWriter:             os.Stderr,
 		// Execute prints the error once; urfave/cli must not print or exit.
 		ExitErrHandler: func(context.Context, *cli.Command, error) {},
-		Commands:       []*cli.Command{
+		Commands: []*cli.Command{
 			// sites: sites.Command(),
 			// deploy and diff: deploy.Command(), deploy.DiffCommand(),
 			// build: build.Command(),
 			// promote: promote.Command(),
-			// admin: admin.Command(),
+			admin.Command(),
 			// backup: backup.Command(),
 			// copy: copy.Command(),
 		},
