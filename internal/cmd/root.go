@@ -16,6 +16,8 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/rahacloud/wpfleet/internal/cmd/cmdutil"
+	"github.com/rahacloud/wpfleet/internal/cmd/deploy"
+	"github.com/rahacloud/wpfleet/internal/cmd/sites"
 )
 
 // New builds the root command. Output goes to stdout and errors to stderr;
@@ -34,9 +36,9 @@ func New() *cli.Command {
 		ErrWriter:             os.Stderr,
 		// Execute prints the error once; urfave/cli must not print or exit.
 		ExitErrHandler: func(context.Context, *cli.Command, error) {},
-		Commands:       []*cli.Command{
-			// sites: sites.Command(),
-			// deploy and diff: deploy.Command(), deploy.DiffCommand(),
+		Commands: []*cli.Command{
+			sites.Command(),
+			deploy.Command(), deploy.DiffCommand(),
 			// build: build.Command(),
 			// promote: promote.Command(),
 			// admin: admin.Command(),
