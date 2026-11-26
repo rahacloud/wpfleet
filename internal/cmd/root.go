@@ -16,8 +16,10 @@ import (
 	"github.com/urfave/cli/v3"
 
 	"github.com/rahacloud/wpfleet/internal/cmd/admin"
+	"github.com/rahacloud/wpfleet/internal/cmd/backup"
 	"github.com/rahacloud/wpfleet/internal/cmd/build"
 	"github.com/rahacloud/wpfleet/internal/cmd/cmdutil"
+	copycmd "github.com/rahacloud/wpfleet/internal/cmd/copy"
 	"github.com/rahacloud/wpfleet/internal/cmd/deploy"
 	"github.com/rahacloud/wpfleet/internal/cmd/promote"
 	"github.com/rahacloud/wpfleet/internal/cmd/sites"
@@ -45,8 +47,8 @@ func New() *cli.Command {
 			build.Command(),
 			promote.Command(),
 			admin.Command(),
-			// backup: backup.Command(),
-			// copy: copy.Command(),
+			backup.Command(),
+			copycmd.Command(),
 		},
 	}
 }
