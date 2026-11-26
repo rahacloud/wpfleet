@@ -45,6 +45,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      # The one-time login plugin's test runs the real PHP and skips without it.
+      - run: php --version
       - run: go build ./...
       - run: go test -race ./... -covermode=atomic -coverprofile=coverage.out
       - run: go mod tidy && git diff --exit-code go.mod go.sum

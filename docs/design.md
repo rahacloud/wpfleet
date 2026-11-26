@@ -26,7 +26,7 @@ A release is rendered from the chart with `_shared.yaml` first and the site file
 chart: ""
 registry: registry.example.com/sites      # images are <registry>/<site>:<tag>
 build:
-  base: docker.io/library/wordpress:7.0.2-php8.2-apache
+  base: docker.io/library/wordpress:7.0.2-php8.4-apache
 wpcli:
   # Copied into the pod when a command needs wp-cli; pods often have no egress.
   url: https://github.com/wp-cli/wp-cli/releases/download/v2.12.0/wp-cli-2.12.0.phar
