@@ -1,0 +1,50 @@
+# GoReleaser configuration — https://goreleaser.com
+version: 2
+
+project_name: wpfleet
+
+before:
+  hooks:
+    - go mod tidy
+    - sh -c 'mkdir -p completions && for s in bash zsh fish; do go run ./cmd/wpfleet completion "$s" > "completions/wpfleet.$s"; done'
+
+builds:
+  - id: wpfleet
+    main: ./cmd/wpfleet
+    binary: wpfleet
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+      - completions/*
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "^ci:"
+
+release:
+  draft: false
+  prerelease: auto

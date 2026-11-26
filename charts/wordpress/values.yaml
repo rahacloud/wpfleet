@@ -1,0 +1,152 @@
+# One release is one site in one environment. Environment-wide values live in
+# environments/<env>/_shared.yaml, the site's own in environments/<env>/<site>.yaml.
+
+# Short site name, lowercase letters, digits and hyphens. It names the
+# database, the database user, the hostname under domainSuffix, and the labels.
+site: ""
+
+# Public hostnames, canonical first. When empty, the site is served on
+# <site><hostLabelSuffix>.<domainSuffix>, which is how development and staging
+# get theirs.
+domains: []
+domainSuffix: ""
+# Added to the site name inside the first label, e.g. "-dev" for
+# blog-dev.example.com, so that environments can share one domain and one
+# wildcard certificate (a wildcard covers one label only).
+hostLabelSuffix: ""
+
+image:
+  # The official image until the shared base image exists; after that, each
+  # site runs its own immutable image built on top of it.
+  repository: docker.io/library/wordpress
+  tag: 7.0.2-php8.4-apache
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# More than one needs a ReadWriteMany uploads volume; rendering refuses
+# otherwise.
+replicas: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 6
+  targetCPUUtilizationPercentage: 70
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+database:
+  # The MariaDB or MySQL service the site uses.
+  host: mariadb
+  port: 3306
+  # Default to wp_<site>, with hyphens turned into underscores.
+  name: ""
+  user: ""
+  # Required. Letters and digits only, because it passes through YAML, shell,
+  # SQL and PHP on the way.
+  password: ""
+  tablePrefix: wp_
+  # Create the schema and user before install and upgrade, using the
+  # instance's root password. Only possible where we hold that password.
+  provision:
+    enabled: true
+    rootSecret:
+      name: mariadb
+      key: root-password
+    image: docker.io/library/mariadb:12.3.3
+
+# Required, all eight. Changing any of them logs every user out.
+salts:
+  authKey: ""
+  secureAuthKey: ""
+  loggedInKey: ""
+  nonceKey: ""
+  authSalt: ""
+  secureAuthSalt: ""
+  loggedInSalt: ""
+  nonceSalt: ""
+
+# wp-content/uploads, the only state a site keeps on disk. Kept on uninstall.
+# With ReadWriteOnce (the default) the site runs as one pod, replaced with the
+# Recreate strategy because a second pod on another node cannot attach it.
+# ReadWriteMany allows replicas and autoscaling.
+uploads:
+  size: 10Gi
+  storageClassName: ""
+  accessMode: ReadWriteOnce
+  existingClaim: ""
+
+# A nightly CronJob that copies the database dump and the uploads to an
+# S3-compatible bucket (templates/backup.yaml). The keys come from a Secret in
+# the namespace, made by hand, with access-key-id and secret-access-key.
+backup:
+  enabled: false
+  # Blank: <minute from the site name> <hour> every day, in timeZone.
+  schedule: ""
+  hour: 3
+  timeZone: Asia/Tehran
+  # Database dumps and replaced upload files older than this are deleted.
+  keepDays: 14
+  image: docker.io/rclone/rclone:1.72.0
+  s3:
+    endpoint: ""
+    bucket: ""
+    secretName: backup-s3
+
+php:
+  uploadMaxFilesize: 64M
+  memoryLimit: 256M
+  maxExecutionTime: 300
+  # Appended verbatim to the php.ini fragment.
+  extraIni: ""
+
+wordpress:
+  debug: false
+  # Plugins and themes ship in the image, so the dashboard must not install,
+  # update or edit them. Only turn this off in development, and only knowing
+  # that whatever gets installed disappears on the next pod restart.
+  disallowFileMods: true
+  # Defines WP_HTTP_BLOCK_EXTERNAL, so WordPress's HTTP API refuses every
+  # outside host at once instead of waiting for a timeout. Turn it on where the
+  # pods have no egress: without it the login page's translation lookup alone
+  # waits 2 x 3 s for api.wordpress.org, past the readiness probe's 5 s.
+  blockExternalHttp: false
+  # Hosts still allowed when blockExternalHttp is on (WP_ACCESSIBLE_HOSTS,
+  # wildcards allowed), e.g. a payment gateway.
+  accessibleHosts: []
+  # PHP appended to wp-config.php through WORDPRESS_CONFIG_EXTRA.
+  configExtra: ""
+  # When set, replaces the image's .htaccess for this environment only, e.g.
+  # to drop an IP allowlist that only makes sense on the old servers. Mounted
+  # read-only, so WordPress cannot rewrite it when permalinks are saved.
+  htaccess: ""
+
+ingress:
+  enabled: true
+  className: ""
+  annotations: {}
+  tls:
+    enabled: true
+    # cert-manager ClusterIssuer; when empty no issuer annotation is set.
+    clusterIssuer: ""
+    # An existing TLS secret, e.g. a wildcard certificate shared by every site
+    # of an environment. When set, it replaces <release>-tls and cert-manager
+    # is left out, whatever clusterIssuer says.
+    secretName: ""
+
+probes:
+  # Loads WordPress and therefore touches the database, so it only drives
+  # readiness. Liveness checks that the web server answers at all.
+  readinessPath: /wp-login.php
+
+podSecurityContext:
+  # www-data in the official image; lets the pod write to uploads.
+  fsGroup: 33
+
+nodeSelector: {}
+tolerations: []

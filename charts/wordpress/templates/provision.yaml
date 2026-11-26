@@ -1,0 +1,87 @@
+{{- if .Values.database.provision.enabled }}
+# Creates the site's schema and user on the shared instance, and resets the
+# user's password to the one in values, before every install and upgrade.
+# Idempotent. The hook Secret carries only the site password and is deleted
+# once the Job succeeds.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "wordpress.fullname" . }}-provision
+  labels:
+    {{- include "wordpress.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+type: Opaque
+stringData:
+  DB_PASSWORD: {{ include "wordpress.dbPassword" . | quote }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "wordpress.fullname" . }}-provision
+  labels:
+    {{- include "wordpress.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 300
+  template:
+    metadata:
+      labels:
+        {{- include "wordpress.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: provision
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsUser: 999
+        runAsGroup: 999
+        runAsNonRoot: true
+      containers:
+        - name: provision
+          image: {{ .Values.database.provision.image }}
+          env:
+            - name: DB_HOST
+              value: {{ .Values.database.host | quote }}
+            - name: DB_PORT
+              value: {{ .Values.database.port | quote }}
+            - name: DB_NAME
+              value: {{ include "wordpress.dbName" . | quote }}
+            - name: DB_USER
+              value: {{ include "wordpress.dbUser" . | quote }}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "wordpress.fullname" . }}-provision
+                  key: DB_PASSWORD
+            - name: MYSQL_PWD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.provision.rootSecret.name }}
+                  key: {{ .Values.database.provision.rootSecret.key }}
+          command:
+            - sh
+            - -ec
+            - |
+              for i in $(seq 1 30); do
+                mariadb -h "$DB_HOST" -P "$DB_PORT" -u root -e 'SELECT 1' >/dev/null 2>&1 && break
+                echo "waiting for $DB_HOST:$DB_PORT"; sleep 5
+              done
+              mariadb -h "$DB_HOST" -P "$DB_PORT" -u root <<SQL
+              CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+              CREATE USER IF NOT EXISTS '$DB_USER'@'%' IDENTIFIED BY '$DB_PASSWORD';
+              ALTER USER '$DB_USER'@'%' IDENTIFIED BY '$DB_PASSWORD';
+              GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'%';
+              SQL
+              echo "provisioned $DB_NAME for $DB_USER"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+{{- end }}

@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "wordpress.fullname" . }}
+  labels:
+    {{- include "wordpress.labels" . | nindent 4 }}
+spec:
+  {{- include "wordpress.validateScaling" . }}
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicas }}
+  {{- end }}
+  {{- if eq (include "wordpress.singleWriter" .) "true" }}
+  # A rolling update would start the new pod while the old one still holds the
+  # volume, and hang if it lands on another node.
+  strategy:
+    type: Recreate
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "wordpress.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "wordpress.labels" . | nindent 8 }}
+      annotations:
+        # Secret and config values are read at container start; roll the pods
+        # when they change.
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "wordpress.selectorLabels" . | nindent 14 }}
+      containers:
+        - name: wordpress
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+          env:
+            - name: WORDPRESS_DB_HOST
+              value: "{{ required "database.host is required" .Values.database.host }}:{{ .Values.database.port }}"
+            - name: WORDPRESS_DB_NAME
+              value: {{ include "wordpress.dbName" . | quote }}
+            - name: WORDPRESS_DB_USER
+              value: {{ include "wordpress.dbUser" . | quote }}
+            - name: WORDPRESS_TABLE_PREFIX
+              value: {{ .Values.database.tablePrefix | quote }}
+            - name: WORDPRESS_DEBUG
+              value: {{ ternary "1" "" .Values.wordpress.debug | quote }}
+            - name: WORDPRESS_CONFIG_EXTRA
+              value: "require '/etc/wordpress/config-extra.php';"
+          envFrom:
+            - secretRef:
+                name: {{ include "wordpress.fullname" . }}
+          volumeMounts:
+            - name: uploads
+              mountPath: /var/www/html/wp-content/uploads
+            - name: config
+              mountPath: /usr/local/etc/php/conf.d/zz-wordpress.ini
+              subPath: php.ini
+            - name: config
+              mountPath: /etc/wordpress/config-extra.php
+              subPath: config-extra.php
+            {{- if .Values.wordpress.htaccess }}
+            - name: config
+              mountPath: /var/www/html/.htaccess
+              subPath: htaccess
+              readOnly: true
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readinessPath }}
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: {{ include "wordpress.hosts" . | fromJsonArray | first }}
+                - name: X-Forwarded-Proto
+                  value: https
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: {{ .Values.uploads.existingClaim | default (printf "%s-uploads" (include "wordpress.fullname" .)) }}
+        - name: config
+          configMap:
+            name: {{ include "wordpress.fullname" . }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

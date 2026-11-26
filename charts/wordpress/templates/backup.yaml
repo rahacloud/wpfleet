@@ -1,0 +1,136 @@
+{{- if .Values.backup.enabled }}
+{{- $site := include "wordpress.site" . }}
+{{- $prefix := printf "%s/%s" .Release.Namespace $site }}
+# Every night: dump the site's database, then copy it and the uploads to S3.
+# The pod mounts the site's uploads claim, which is node-local and
+# ReadWriteOnce, so the scheduler puts it on the node of the site's own pod
+# (ReadWriteOnce allows several pods on one node). Layout in the bucket:
+#   <namespace>/<site>/database/<stamp>.sql.gz
+#   <namespace>/<site>/uploads/current/...         a mirror of the volume
+#   <namespace>/<site>/uploads/changed/<stamp>/... what that night replaced or deleted
+# Runs older than keepDays are deleted by the stamp in their name, because
+# rclone keeps a file's own modification time, which says nothing about when
+# it was backed up.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "wordpress.fullname" . }}-backup
+  labels:
+    {{- include "wordpress.labels" . | nindent 4 }}
+spec:
+  # The minute comes from the site name, so the sites do not all hit MariaDB
+  # and the bucket at the same moment.
+  schedule: {{ .Values.backup.schedule | default (printf "%d %d * * *" (mod (adler32sum $site) 60) (int .Values.backup.hour)) | quote }}
+  timeZone: {{ .Values.backup.timeZone }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 7200
+      template:
+        metadata:
+          labels:
+            {{- include "wordpress.labels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          initContainers:
+            - name: dump
+              image: {{ .Values.database.provision.image }}
+              # --single-transaction gives a consistent InnoDB snapshot without
+              # locking the site; --no-tablespaces because the site user has no
+              # PROCESS privilege.
+              command:
+                - bash
+                - -ec
+                - |
+                  set -o pipefail
+                  mariadb-dump -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" \
+                    --single-transaction --quick --routines --triggers --events --no-tablespaces \
+                    "$DB_NAME" | gzip > /work/database.sql.gz
+                  gzip -t /work/database.sql.gz
+                  ls -l /work/database.sql.gz
+              env:
+                - name: DB_HOST
+                  value: {{ .Values.database.host | quote }}
+                - name: DB_PORT
+                  value: {{ .Values.database.port | quote }}
+                - name: DB_NAME
+                  value: {{ include "wordpress.dbName" . | quote }}
+                - name: DB_USER
+                  value: {{ include "wordpress.dbUser" . | quote }}
+                - name: MYSQL_PWD
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "wordpress.fullname" . }}
+                      key: WORDPRESS_DB_PASSWORD
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+          containers:
+            - name: upload
+              image: {{ .Values.backup.image }}
+              command:
+                - sh
+                - -ec
+                - |
+                  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+                  cutoff=$(date -u -d "@$(( $(date +%s) - KEEP_DAYS * 86400 ))" +%Y%m%dT%H%M%SZ)
+                  base="s3:$BUCKET/$PREFIX"
+                  rclone copyto /work/database.sql.gz "$base/database/$stamp.sql.gz"
+                  rclone sync /uploads "$base/uploads/current" --backup-dir "$base/uploads/changed/$stamp"
+                  rclone lsf --files-only "$base/database" | awk -v c="$cutoff" '$0 < c' |
+                    while read -r f; do rclone deletefile "$base/database/$f"; done
+                  rclone lsf --dirs-only "$base/uploads/changed" | awk -v c="$cutoff" '$0 < c' |
+                    while read -r d; do rclone purge "$base/uploads/changed/$d"; done
+                  echo "backed up $PREFIX at $stamp, removed runs before $cutoff"
+              env:
+                - name: BUCKET
+                  value: {{ required "backup.s3.bucket is required" .Values.backup.s3.bucket | quote }}
+                - name: PREFIX
+                  value: {{ $prefix | quote }}
+                - name: KEEP_DAYS
+                  value: {{ .Values.backup.keepDays | quote }}
+                - name: RCLONE_CONFIG_S3_TYPE
+                  value: s3
+                - name: RCLONE_CONFIG_S3_PROVIDER
+                  value: Other
+                - name: RCLONE_CONFIG_S3_ENDPOINT
+                  value: {{ required "backup.s3.endpoint is required" .Values.backup.s3.endpoint | quote }}
+                - name: RCLONE_CONFIG_S3_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.backup.s3.secretName }}
+                      key: access-key-id
+                - name: RCLONE_CONFIG_S3_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.backup.s3.secretName }}
+                      key: secret-access-key
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  memory: 256Mi
+              volumeMounts:
+                - name: work
+                  mountPath: /work
+                  readOnly: true
+                - name: uploads
+                  mountPath: /uploads
+                  readOnly: true
+          volumes:
+            - name: work
+              emptyDir: {}
+            - name: uploads
+              persistentVolumeClaim:
+                claimName: {{ .Values.uploads.existingClaim | default (printf "%s-uploads" (include "wordpress.fullname" .)) }}
+                readOnly: true
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

@@ -1,0 +1,45 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "wordpress.fullname" . }}
+  labels:
+    {{- include "wordpress.labels" . | nindent 4 }}
+data:
+  php.ini: |
+    upload_max_filesize = {{ .Values.php.uploadMaxFilesize }}
+    post_max_size = {{ .Values.php.uploadMaxFilesize }}
+    memory_limit = {{ .Values.php.memoryLimit }}
+    max_execution_time = {{ .Values.php.maxExecutionTime }}
+    max_input_time = {{ .Values.php.maxExecutionTime }}
+    max_input_vars = 3000
+    date.timezone = Asia/Tehran
+    expose_php = Off
+    opcache.enable = 1
+    opcache.memory_consumption = 128
+    opcache.max_accelerated_files = 20000
+    ; Code never changes inside a running pod, so never re-stat it.
+    opcache.validate_timestamps = 0
+    {{- with .Values.php.extraIni }}
+    {{- . | nindent 4 }}
+    {{- end }}
+  config-extra.php: |
+    <?php
+    define('WP_HOME', '{{ include "wordpress.url" . }}');
+    define('WP_SITEURL', '{{ include "wordpress.url" . }}');
+    define('DISALLOW_FILE_EDIT', true);
+    define('DISALLOW_FILE_MODS', {{ .Values.wordpress.disallowFileMods }});
+    define('AUTOMATIC_UPDATER_DISABLED', true);
+    define('WP_POST_REVISIONS', 10);
+    {{- if .Values.wordpress.blockExternalHttp }}
+    define('WP_HTTP_BLOCK_EXTERNAL', true);
+    {{- with .Values.wordpress.accessibleHosts }}
+    define('WP_ACCESSIBLE_HOSTS', '{{ join "," . }}');
+    {{- end }}
+    {{- end }}
+    {{- with .Values.wordpress.configExtra }}
+    {{- . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.wordpress.htaccess }}
+  htaccess: |
+    {{- . | nindent 4 }}
+  {{- end }}

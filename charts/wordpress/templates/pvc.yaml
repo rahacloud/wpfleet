@@ -1,0 +1,19 @@
+{{- if not .Values.uploads.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "wordpress.fullname" . }}-uploads
+  labels:
+    {{- include "wordpress.labels" . | nindent 4 }}
+  annotations:
+    # Media is the one thing a site cannot rebuild from Git.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [{{ .Values.uploads.accessMode }}]
+  {{- with .Values.uploads.storageClassName }}
+  storageClassName: {{ . }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.uploads.size }}
+{{- end }}

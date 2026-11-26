@@ -1,0 +1,18 @@
+# Render and lint only; not a real site.
+site: example-site
+domainSuffix: dev.example.invalid
+database:
+  password: testtesttesttest1234
+ingress:
+  className: nginx
+  tls:
+    clusterIssuer: letsencrypt
+salts:
+  authKey: a
+  secureAuthKey: b
+  loggedInKey: c
+  nonceKey: d
+  authSalt: e
+  secureAuthSalt: f
+  loggedInSalt: g
+  nonceSalt: h

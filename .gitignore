@@ -1,0 +1,9 @@
+/wpfleet
+/dist/
+/completions/
+*.test
+*.out
+coverage.*
+.DS_Store
+/.idea
+/.vscode
