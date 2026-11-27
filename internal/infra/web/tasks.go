@@ -14,6 +14,9 @@ import (
 	"github.com/a-h/templ"
 	"github.com/labstack/echo/v5"
 
+	"github.com/rahacloud/wpfleet/internal/domain/access"
+	"github.com/rahacloud/wpfleet/internal/domain/audit"
+	"github.com/rahacloud/wpfleet/internal/infra/session"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 	"github.com/rahacloud/wpfleet/internal/ops"
@@ -193,7 +196,7 @@ type outcome struct {
 // When work ends the lock is released, the result is written to the task
 // and the action is audited.
 func (s *Server) start(
-	c *echo.Context, sess Session, env, site string, action ui.Action,
+	c *echo.Context, sess session.Session, env, site string, action ui.Action,
 	release func(), work func(context.Context, *task) outcome,
 ) error {
 	t := s.tasks.create(env, site, action)
@@ -208,11 +211,11 @@ func (s *Server) start(
 		rec.Commit, rec.Detail = out.commit, out.detail
 
 		if out.err != nil {
-			rec.Result, rec.Detail = resultFailed, joinDetail(out.detail, out.err.Error())
+			rec.Result, rec.Detail = audit.ResultFailed, joinDetail(out.detail, out.err.Error())
 			args := []string{out.err.Error()}
 			t.finish(taskEvent{kind: eventDone, key: i18n.TaskFailed, args: args, text: "", ok: false}, s.now())
 		} else {
-			rec.Result = resultOK
+			rec.Result = audit.ResultOK
 			t.finish(taskEvent{kind: eventDone, key: out.key, args: out.args, text: "", ok: true}, s.now())
 		}
 
@@ -242,7 +245,7 @@ func (s *Server) watchable(c *echo.Context, id string) (*task, error) {
 		return nil, echo.ErrNotFound
 	}
 
-	if !s.allows(sessionOf(c), t.env, t.site, PermView) {
+	if !s.allows(sessionOf(c), t.env, t.site, access.View) {
 		return nil, echo.ErrForbidden
 	}
 

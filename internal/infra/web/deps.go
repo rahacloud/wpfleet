@@ -9,105 +9,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rahacloud/wpfleet/internal/domain/access"
+	"github.com/rahacloud/wpfleet/internal/domain/audit"
 	"github.com/rahacloud/wpfleet/internal/domain/fleet"
+	"github.com/rahacloud/wpfleet/internal/infra/gitrepo"
+	"github.com/rahacloud/wpfleet/internal/infra/session"
 	"github.com/rahacloud/wpfleet/internal/ops"
 )
-
-// Permission is what a rule allows on a site. Every permission implies
-// PermView.
-type Permission string
-
-// The permissions of docs/design.md.
-const (
-	// PermView shows the site, its details, diff, history and backups.
-	PermView Permission = "view"
-	// PermDeploy allows promote into the environment and deploy there.
-	PermDeploy Permission = "deploy"
-	// PermLogin allows the one-time admin login.
-	PermLogin Permission = "login"
-	// PermBackup allows backup run.
-	PermBackup Permission = "backup"
-	// PermRestore allows backup restore.
-	PermRestore Permission = "restore"
-)
-
-// Identity is the signed-in person, as the ID token named them.
-type Identity struct {
-	// Subject is the ID token's sub claim.
-	Subject string
-	// Email is the person's email.
-	Email string
-	// Name is the person's display name.
-	Name string
-	// Groups are the groups the provider puts the person in.
-	Groups []string
-}
-
-// Session is the signed-in state the session cookie carries.
-type Session struct {
-	// Identity is the person.
-	Identity Identity
-	// Expires is when the session ends.
-	Expires time.Time
-	// CSRF is the token every POST must carry.
-	CSRF string
-	// Lang is the language the person picked; empty follows the browser.
-	Lang string
-}
-
-// Flow is the short-lived state of one sign-in, kept between the redirect
-// to the provider and the callback.
-type Flow struct {
-	// State is the OAuth 2.0 state parameter.
-	State string
-	// Nonce is the OpenID Connect nonce the ID token must carry.
-	Nonce string
-	// Verifier is the PKCE code verifier.
-	Verifier string
-	// Return is the local path to go to after sign-in.
-	Return string
-}
-
-// Signature names the author of a commit.
-type Signature struct {
-	// Name and Email identify the author.
-	Name, Email string
-}
-
-// LogEntry is one commit in the history of a file.
-type LogEntry struct {
-	// SHA is the commit.
-	SHA string
-	// Author and Email name who made it.
-	Author, Email string
-	// When is the author's time.
-	When time.Time
-	// Subject is the first line of the message.
-	Subject string
-}
-
-// AuditRecord is one line of the audit log: an action, allowed or refused.
-type AuditRecord struct {
-	// Time is when the action ended or was refused.
-	Time time.Time
-	// Actor is who asked for it.
-	Actor Identity
-	// Action is the action: deploy, promote, login, backup or restore.
-	Action string
-	// Env and Site are what it acted on.
-	Env, Site string
-	// Commit is the fleet commit, for promote and deploy.
-	Commit string
-	// Result is ok, failed, refused or busy.
-	Result string
-	// Detail says more: why it failed or was refused, what a promotion
-	// changed.
-	Detail string
-	// WPUser is the WordPress user an admin login logged in as.
-	WPUser string
-	// Allowed says whether the access rules allowed it.
-	Allowed bool
-}
 
 // Authenticator signs people in with OpenID Connect: the code flow with
 // PKCE, state and nonce.
@@ -116,36 +24,36 @@ type Authenticator interface {
 	AuthURL(state, nonce, verifier string) string
 	// Exchange redeems the code, verifies the ID token and its nonce, and
 	// returns the person it names.
-	Exchange(ctx context.Context, code, verifier, nonce string) (Identity, error)
+	Exchange(ctx context.Context, code, verifier, nonce string) (access.Identity, error)
 }
 
 // Sessions keeps the session and the sign-in flow in encrypted cookies.
 type Sessions interface {
 	// Get reads the session of a request; false when there is none or it
 	// expired.
-	Get(r *http.Request) (Session, bool)
+	Get(r *http.Request) (session.Session, bool)
 	// Set writes the session.
-	Set(w http.ResponseWriter, s Session) error
+	Set(w http.ResponseWriter, s session.Session) error
 	// Clear removes the session.
 	Clear(w http.ResponseWriter)
 	// New starts a session for a person, with a fresh CSRF token.
-	New(id Identity, lang string) (Session, error)
+	New(id access.Identity, lang string) (session.Session, error)
 	// CheckCSRF reports whether the request carries the session's token, in
 	// the form field csrf or the header X-CSRF-Token.
-	CheckCSRF(r *http.Request, s Session) bool
+	CheckCSRF(r *http.Request, s session.Session) bool
 	// SetFlow writes the state of a sign-in.
-	SetFlow(w http.ResponseWriter, f Flow) error
+	SetFlow(w http.ResponseWriter, f session.Flow) error
 	// TakeFlow reads the state of a sign-in and removes it, so it is used
 	// once.
-	TakeFlow(w http.ResponseWriter, r *http.Request) (Flow, bool)
+	TakeFlow(w http.ResponseWriter, r *http.Request) (session.Flow, bool)
 }
 
 // Authorizer evaluates the access rules. It denies unless a rule allows.
 type Authorizer interface {
 	// Allows reports whether one of groups may use perm on site in env.
-	Allows(groups []string, env, site string, perm Permission) bool
+	Allows(groups []string, env, site string, perm access.Permission) bool
 	// Permissions lists what groups may do on site in env.
-	Permissions(groups []string, env, site string) []Permission
+	Permissions(groups []string, env, site string) []access.Permission
 }
 
 // Repo is the server's clone of the fleet repository.
@@ -158,10 +66,10 @@ type Repo interface {
 	// Commit runs edit in the clone, commits the paths it returns with
 	// author as the author and pushes. When the push is refused it syncs,
 	// runs edit again and pushes once more.
-	Commit(ctx context.Context, msg string, author Signature, edit func(dir string) ([]string, error)) (string, error)
+	Commit(ctx context.Context, msg string, author gitrepo.Signature, edit gitrepo.Edit) (string, error)
 	// FileLog lists the last n commits that changed path, relative to the
 	// clone, newest first.
-	FileLog(ctx context.Context, path string, n int) ([]LogEntry, error)
+	FileLog(ctx context.Context, path string, n int) ([]gitrepo.LogEntry, error)
 }
 
 // Environment is one environment of the fleet, as the UI needs it.
@@ -228,7 +136,7 @@ type Locker interface {
 }
 
 // Auditor writes one audit record.
-type Auditor func(ctx context.Context, r AuditRecord)
+type Auditor func(ctx context.Context, r audit.Record)
 
 // Deps are what the server is built from. Every field but Logger,
 // VerifyWebhook and Now is required.
@@ -253,7 +161,7 @@ type Deps struct {
 	// person's email, when one is an administrator.
 	MatchEmail bool
 	// Committer is the server's bot identity, logged with each promotion.
-	Committer Signature
+	Committer gitrepo.Signature
 	// VerifyWebhook checks a push webhook's body against its signature
 	// header; nil turns /hooks/git off.
 	VerifyWebhook func(body []byte, signature string) bool

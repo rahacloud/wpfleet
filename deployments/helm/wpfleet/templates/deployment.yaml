@@ -28,6 +28,7 @@ spec:
         {{- end }}
     spec:
       serviceAccountName: {{ include "wpfleet.serviceAccountName" . }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       automountServiceAccountToken: true
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:

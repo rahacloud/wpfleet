@@ -9,17 +9,13 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"github.com/rahacloud/wpfleet/internal/domain/access"
+	"github.com/rahacloud/wpfleet/internal/domain/audit"
+	"github.com/rahacloud/wpfleet/internal/infra/gitrepo"
+	"github.com/rahacloud/wpfleet/internal/infra/session"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 	"github.com/rahacloud/wpfleet/internal/ops"
-)
-
-// The results an audit record carries.
-const (
-	resultOK      = "ok"
-	resultFailed  = "failed"
-	resultRefused = "refused"
-	resultBusy    = "busy"
 )
 
 // errDeployFailed is the error of a deploy whose release failed.
@@ -27,15 +23,15 @@ var errDeployFailed = errors.New("the deploy failed")
 
 // record is an audit record of an action by the person in sess, allowed
 // unless the caller says otherwise.
-func (s *Server) record(sess Session, action ui.Action, env, site string) AuditRecord {
-	return AuditRecord{
+func (s *Server) record(sess session.Session, action ui.Action, env, site string) audit.Record {
+	return audit.Record{
 		Time: s.now(), Actor: sess.Identity, Action: string(action), Env: env, Site: site,
 		Commit: "", Result: "", Detail: "", WPUser: "", Allowed: true,
 	}
 }
 
 // audit writes a record and counts it.
-func (s *Server) audit(ctx context.Context, r AuditRecord) {
+func (s *Server) audit(ctx context.Context, r audit.Record) {
 	r.Time = s.now()
 	s.metrics.actions.WithLabelValues(r.Action, r.Result).Inc()
 	s.deps.Audit(ctx, r)
@@ -43,7 +39,7 @@ func (s *Server) audit(ctx context.Context, r AuditRecord) {
 
 // target is the site an action runs on, and who asked.
 type target struct {
-	sess      Session
+	sess      session.Session
 	env, site string
 	action    ui.Action
 }
@@ -52,7 +48,7 @@ type target struct {
 // permission perms names, then that the site exists. A refusal is audited
 // and rendered, and prepare returns false; the caller then returns the
 // error, which is nil when the refusal page was written.
-func (s *Server) prepare(c *echo.Context, action ui.Action, perms ...Permission) (target, bool, error) {
+func (s *Server) prepare(c *echo.Context, action ui.Action, perms ...access.Permission) (target, bool, error) {
 	sess := sessionOf(c)
 	t := target{sess: sess, env: c.Param("env"), site: c.Param("site"), action: action}
 	l := s.lang(c)
@@ -60,7 +56,7 @@ func (s *Server) prepare(c *echo.Context, action ui.Action, perms ...Permission)
 
 	refuse := func(status int, detail, text string) (target, bool, error) {
 		rec := s.record(sess, action, t.env, t.site)
-		rec.Result, rec.Detail, rec.Allowed = resultRefused, detail, false
+		rec.Result, rec.Detail, rec.Allowed = audit.ResultDenied, detail, false
 		s.audit(c.Request().Context(), rec)
 
 		return t, false, s.refuse(c, status, text, back)
@@ -102,7 +98,7 @@ func (s *Server) lock(c *echo.Context, t target) (func(), bool, error) {
 	}
 
 	rec := s.record(t.sess, t.action, t.env, t.site)
-	rec.Result, rec.Detail = resultBusy, busy.Error()
+	rec.Result, rec.Detail = audit.ResultBusy, busy.Error()
 	s.audit(c.Request().Context(), rec)
 
 	l := s.lang(c)
@@ -114,7 +110,7 @@ func (s *Server) lock(c *echo.Context, t target) (func(), bool, error) {
 // deploy deploys what the branch holds now: it syncs the clone first, so the
 // release records the commit it was rendered from.
 func (s *Server) deploy(c *echo.Context) error {
-	t, ok, err := s.prepare(c, ui.ActionDeploy, PermDeploy)
+	t, ok, err := s.prepare(c, ui.ActionDeploy, access.Deploy)
 	if !ok {
 		return err
 	}
@@ -156,7 +152,7 @@ func (s *Server) deployAt(ctx context.Context, tk *task, t target, sha, detail s
 // as a commit authored by the person, and deploys it. It needs deploy here
 // and view on the source.
 func (s *Server) promote(c *echo.Context) error {
-	t, ok, err := s.prepare(c, ui.ActionPromote, PermDeploy)
+	t, ok, err := s.prepare(c, ui.ActionPromote, access.Deploy)
 	if !ok {
 		return err
 	}
@@ -172,9 +168,9 @@ func (s *Server) promote(c *echo.Context) error {
 		return s.refuse(c, http.StatusBadRequest, l.T(i18n.NoPromoteFrom), ui.SitePath(t.env, t.site))
 	}
 
-	if !s.allows(t.sess, env.PromoteFrom, t.site, PermView) {
+	if !s.allows(t.sess, env.PromoteFrom, t.site, access.View) {
 		rec := s.record(t.sess, t.action, t.env, t.site)
-		rec.Result, rec.Detail, rec.Allowed = resultRefused, "no view permission on "+env.PromoteFrom, false
+		rec.Result, rec.Detail, rec.Allowed = audit.ResultDenied, "no view permission on "+env.PromoteFrom, false
 		s.audit(c.Request().Context(), rec)
 
 		return s.refuse(c, http.StatusForbidden, l.T(i18n.Forbidden), ui.SitePath(t.env, t.site))
@@ -209,7 +205,7 @@ func (s *Server) publish(ctx context.Context, tk *task, t target) outcome {
 	if plan.Changed() {
 		msg := fmt.Sprintf("Publish %s from %s to %s\n\n%s\n\nRequested in wpfleet by %s.\n",
 			t.site, plan.From, plan.To, detail, displayName(t.sess.Identity))
-		author := Signature{Name: authorName(t.sess.Identity), Email: t.sess.Identity.Email}
+		author := gitrepo.Signature{Name: authorName(t.sess.Identity), Email: t.sess.Identity.Email}
 
 		sha, err = s.deps.Repo.Commit(ctx, msg, author, func(dir string) ([]string, error) {
 			return s.deps.Ops.Promote(ctx, dir, t.env, t.site)
@@ -232,7 +228,7 @@ func (s *Server) publish(ctx context.Context, tk *task, t target) outcome {
 }
 
 // authorName is the name a person's commits carry.
-func authorName(id Identity) string {
+func authorName(id access.Identity) string {
 	if id.Name != "" {
 		return id.Name
 	}
@@ -244,7 +240,7 @@ func authorName(id Identity) string {
 // link is never rendered: it is only in the Location header of a response
 // that is not cached.
 func (s *Server) admin(c *echo.Context) error {
-	t, ok, err := s.prepare(c, ui.ActionLogin, PermLogin)
+	t, ok, err := s.prepare(c, ui.ActionLogin, access.Login)
 	if !ok {
 		return err
 	}
@@ -260,13 +256,13 @@ func (s *Server) admin(c *echo.Context) error {
 	rec := s.record(t.sess, t.action, t.env, t.site)
 
 	if err != nil {
-		rec.Result, rec.Detail = resultFailed, err.Error()
+		rec.Result, rec.Detail = audit.ResultFailed, err.Error()
 		s.audit(ctx, rec)
 
 		return s.refuse(c, http.StatusBadGateway, s.lang(c).T(i18n.ServerError), ui.SitePath(t.env, t.site))
 	}
 
-	rec.Result = resultOK
+	rec.Result = audit.ResultOK
 	rec.WPUser = strconv.Itoa(login.UserID)
 
 	if login.MatchedEmail {
@@ -281,7 +277,7 @@ func (s *Server) admin(c *echo.Context) error {
 
 // backup takes a backup now from the site's CronJob and follows it.
 func (s *Server) backup(c *echo.Context) error {
-	t, ok, err := s.prepare(c, ui.ActionBackup, PermBackup)
+	t, ok, err := s.prepare(c, ui.ActionBackup, access.Backup)
 	if !ok {
 		return err
 	}
@@ -303,7 +299,7 @@ func (s *Server) backup(c *echo.Context) error {
 
 // restore restores a backup once the site's name was typed to confirm it.
 func (s *Server) restore(c *echo.Context) error {
-	t, ok, err := s.prepare(c, ui.ActionRestore, PermRestore)
+	t, ok, err := s.prepare(c, ui.ActionRestore, access.Restore)
 	if !ok {
 		return err
 	}
@@ -313,7 +309,7 @@ func (s *Server) restore(c *echo.Context) error {
 
 	if c.FormValue("confirm") != t.site || stamp == "" {
 		rec := s.record(t.sess, t.action, t.env, t.site)
-		rec.Result, rec.Detail = resultRefused, "the typed confirmation did not match the site's name"
+		rec.Result, rec.Detail = audit.ResultDenied, "the typed confirmation did not match the site's name"
 		s.audit(c.Request().Context(), rec)
 
 		return s.refuse(c, http.StatusBadRequest, s.lang(c).T(i18n.RestoreMismatch), ui.SitePath(t.env, t.site))

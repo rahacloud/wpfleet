@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +20,8 @@ import (
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 
+	"github.com/rahacloud/wpfleet/internal/domain/access"
+	"github.com/rahacloud/wpfleet/internal/infra/session"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 )
@@ -220,8 +221,8 @@ func (s *Server) requireSession(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 // sessionOf is the session requireSession put on the context.
-func sessionOf(c *echo.Context) Session {
-	sess, _ := c.Get(sessionKey).(Session)
+func sessionOf(c *echo.Context) session.Session {
+	sess, _ := c.Get(sessionKey).(session.Session)
 
 	return sess
 }
@@ -249,7 +250,7 @@ func (s *Server) page(c *echo.Context, title string) ui.Page {
 }
 
 // displayName is how the header names a person.
-func displayName(id Identity) string {
+func displayName(id access.Identity) string {
 	if id.Email != "" {
 		return id.Email
 	}
@@ -340,18 +341,4 @@ func (s *Server) readyz(c *echo.Context) error {
 	}
 
 	return c.String(http.StatusOK, "ok")
-}
-
-// safeReturn keeps a return path only when it stays on this server.
-func safeReturn(p string) string {
-	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(p, `/\`) {
-		return "/"
-	}
-
-	u, err := url.Parse(p)
-	if err != nil || u.Scheme != "" || u.Host != "" {
-		return "/"
-	}
-
-	return u.RequestURI()
 }

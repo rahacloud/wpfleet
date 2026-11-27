@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v5"
+
+	"github.com/rahacloud/wpfleet/internal/domain/audit"
 )
 
 // syncTimeout bounds one sync of the clone.
@@ -40,6 +42,14 @@ func (s *Server) hook(c *echo.Context) error {
 	s.syncer.trigger()
 
 	return c.String(http.StatusAccepted, "sync started")
+}
+
+// TriggerSync asks for a sync of the clone, as a push webhook does. The
+// serve command's poll loop calls it, so polls and webhooks share one
+// syncer and never sync at the same time. It must not be called after
+// Shutdown.
+func (s *Server) TriggerSync() {
+	s.syncer.trigger()
 }
 
 // syncer syncs the clone in the background, one sync at a time: a webhook
@@ -102,12 +112,12 @@ func (y *syncer) once() {
 
 	sha, err := y.repo.Sync(ctx)
 	if err != nil {
-		y.metrics.syncs.WithLabelValues(resultFailed).Inc()
+		y.metrics.syncs.WithLabelValues(audit.ResultFailed).Inc()
 		y.log.ErrorContext(ctx, "syncing the fleet repository", "error", err)
 
 		return
 	}
 
-	y.metrics.syncs.WithLabelValues(resultOK).Inc()
+	y.metrics.syncs.WithLabelValues(audit.ResultOK).Inc()
 	y.log.InfoContext(ctx, "synced the fleet repository", "commit", sha)
 }

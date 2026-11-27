@@ -11,7 +11,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rahacloud/wpfleet/internal/domain/access"
+	"github.com/rahacloud/wpfleet/internal/domain/audit"
 	"github.com/rahacloud/wpfleet/internal/domain/backup"
+	"github.com/rahacloud/wpfleet/internal/infra/gitrepo"
 	"github.com/rahacloud/wpfleet/internal/infra/helm"
 	"github.com/rahacloud/wpfleet/internal/infra/web"
 	"github.com/rahacloud/wpfleet/internal/ops"
@@ -31,20 +34,22 @@ const (
 )
 
 // editor is of the shop team, who may view and log in to staging.
-func editor() web.Identity {
-	return web.Identity{Subject: "editor", Email: "editor@example.com", Name: "An Editor", Groups: []string{"shop-team"}}
+func editor() access.Identity {
+	return access.Identity{
+		Subject: "editor", Email: "editor@example.com", Name: "An Editor", Groups: []string{"shop-team"},
+	}
 }
 
 // platform is of the platform team, who may do everything.
-func platform() web.Identity {
-	return web.Identity{
+func platform() access.Identity {
+	return access.Identity{
 		Subject: groupPlatform, Email: "ops@example.com", Name: "Platform Person", Groups: []string{groupPlatform},
 	}
 }
 
 // stranger is in no group the rules name.
-func stranger() web.Identity {
-	return web.Identity{Subject: "stranger", Email: "stranger@example.com", Name: "", Groups: []string{"nobody"}}
+func stranger() access.Identity {
+	return access.Identity{Subject: "stranger", Email: "stranger@example.com", Name: "", Groups: []string{"nobody"}}
 }
 
 // helmRelease is a deployed release with a description.
@@ -84,16 +89,16 @@ func newHarness(t *testing.T) *harness {
 		audit: &auditLog{}, //nolint:exhaustruct_v5 // zero is empty
 	}
 
-	everything := []web.Permission{web.PermView, web.PermDeploy, web.PermLogin, web.PermBackup, web.PermRestore}
-	access := fakeAccess{
-		"shop-team":   {envStaging: {web.PermView, web.PermLogin}},
+	everything := []access.Permission{access.View, access.Deploy, access.Login, access.Backup, access.Restore}
+	rules := fakeAccess{
+		"shop-team":   {envStaging: {access.View, access.Login}},
 		groupPlatform: {envDev: everything, envStaging: everything, envProd: everything},
 	}
 
 	server, err := web.New(web.Deps{
-		Auth: h.auth, Sessions: h.sessions, Access: access, Repo: h.repo, Ops: h.ops, Locks: h.locks,
+		Auth: h.auth, Sessions: h.sessions, Access: rules, Repo: h.repo, Ops: h.ops, Locks: h.locks,
 		Audit: h.audit.write, Logger: slog.New(slog.DiscardHandler), MatchEmail: true,
-		Committer: web.Signature{Name: "wpfleet", Email: "wpfleet@example.com"},
+		Committer: gitrepo.Signature{Name: "wpfleet", Email: "wpfleet@example.com"},
 		VerifyWebhook: func(body []byte, signature string) bool {
 			return signature == "sha256=good" && string(body) == `{"ref":"refs/heads/main"}`
 		},
@@ -151,7 +156,7 @@ func (h *harness) events(location string, cookie *http.Cookie) *httptest.Respons
 }
 
 // as signs a person in and returns their cookie and CSRF token.
-func (h *harness) as(id web.Identity, lang string) (*http.Cookie, string) {
+func (h *harness) as(id access.Identity, lang string) (*http.Cookie, string) {
 	return h.sessions.signIn(id, lang), "csrf-" + id.Subject
 }
 
@@ -226,8 +231,8 @@ func TestLoginFlow(t *testing.T) {
 	testutil.Equal(t, "nonce passed on", h.auth.nonce, location.Query().Get("nonce"))
 	testutil.Equal(t, "verifier passed on", h.auth.verifier, location.Query().Get("challenge-of"))
 
-	session := w.Result().Cookies()[0]
-	w = h.request(http.MethodGet, "/sites/staging/blog", nil, session)
+	cookie := w.Result().Cookies()[0]
+	w = h.request(http.MethodGet, "/sites/staging/blog", nil, cookie)
 	testutil.Equal(t, "signed in", w.Code, http.StatusOK)
 }
 
@@ -258,7 +263,7 @@ func TestCSRFIsRejectedAndAudited(t *testing.T) {
 	testutil.Equal(t, "deploys", len(h.ops.called("Deploy")), 0)
 
 	rec := h.audit.only(t)
-	testutil.Equal(t, "result", rec.Result, "refused")
+	testutil.Equal(t, "result", rec.Result, audit.ResultDenied)
 	testutil.Equal(t, "allowed", rec.Allowed, false)
 	testutil.Equal(t, "actor", rec.Actor.Email, platform().Email)
 	testutil.Contains(t, "detail", rec.Detail, "csrf")
@@ -332,7 +337,7 @@ func TestRefusalIsAudited(t *testing.T) {
 	testutil.Equal(t, "records", len(records), 4)
 
 	for _, rec := range records {
-		testutil.Equal(t, rec.Action+" result", rec.Result, "refused")
+		testutil.Equal(t, rec.Action+" result", rec.Result, audit.ResultDenied)
 		testutil.Equal(t, rec.Action+" allowed", rec.Allowed, false)
 		testutil.Equal(t, rec.Action+" env", rec.Env, "staging")
 		testutil.Equal(t, rec.Action+" site", rec.Site, "blog")
@@ -554,7 +559,7 @@ func TestPromoteCommitsAsThePersonAndDeploys(t *testing.T) {
 	testutil.Equal(t, "commits", len(h.repo.commits), 1)
 
 	commit := h.repo.commits[0]
-	testutil.DeepEqual(t, "author", commit.author, web.Signature{Name: platform().Name, Email: platform().Email})
+	testutil.DeepEqual(t, "author", commit.author, gitrepo.Signature{Name: platform().Name, Email: platform().Email})
 	testutil.DeepEqual(t, "files", commit.files, []string{stagingBlogFile})
 	testutil.Contains(t, "message", commit.msg,
 		"Publish blog from development to staging", tagOld+" -> registry.example.com/sites/blog:20261127-120000")
@@ -606,7 +611,7 @@ func TestRestoreNeedsTheSiteName(t *testing.T) {
 	testutil.Equal(t, "status", w.Code, http.StatusBadRequest)
 	testutil.Contains(t, "page", w.Body.String(), "nothing was restored")
 	testutil.Equal(t, "restores", len(h.ops.called("Restore")), 0)
-	testutil.Equal(t, "refusal audited", h.audit.only(t).Result, "refused")
+	testutil.Equal(t, "refusal audited", h.audit.only(t).Result, audit.ResultDenied)
 
 	w = h.request(http.MethodPost, "/sites/staging/blog/restore",
 		form(csrf, "stamp", "20261126T020000Z", "confirm", "blog", "uploads", "1"), cookie)
@@ -711,7 +716,7 @@ func TestMetrics(t *testing.T) {
 	w := httptest.NewRecorder()
 	r := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/metrics", nil)
 	h.server.MetricsHandler().ServeHTTP(w, r)
-	testutil.Contains(t, "metrics", w.Body.String(), `wpfleet_actions_total{action="deploy",result="refused"} 1`)
+	testutil.Contains(t, "metrics", w.Body.String(), `wpfleet_actions_total{action="deploy",result="denied"} 1`)
 }
 
 func TestLogout(t *testing.T) {

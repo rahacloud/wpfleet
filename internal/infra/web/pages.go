@@ -6,7 +6,9 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"github.com/rahacloud/wpfleet/internal/domain/access"
 	"github.com/rahacloud/wpfleet/internal/domain/fleet"
+	"github.com/rahacloud/wpfleet/internal/infra/session"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 	"github.com/rahacloud/wpfleet/internal/ops"
@@ -16,19 +18,19 @@ import (
 const historyLength = 20
 
 // allows reports whether the session's person may use perm on site in env.
-func (s *Server) allows(sess Session, env, site string, perm Permission) bool {
+func (s *Server) allows(sess session.Session, env, site string, perm access.Permission) bool {
 	return s.deps.Access.Allows(sess.Identity.Groups, env, site, perm)
 }
 
 // perms are the actions the session's person may start on site in env.
-func (s *Server) perms(sess Session, env, site string) ui.Perms {
+func (s *Server) perms(sess session.Session, env, site string) ui.Perms {
 	granted := s.deps.Access.Permissions(sess.Identity.Groups, env, site)
 
 	return ui.Perms{
-		Deploy:  slices.Contains(granted, PermDeploy),
-		Login:   slices.Contains(granted, PermLogin),
-		Backup:  slices.Contains(granted, PermBackup),
-		Restore: slices.Contains(granted, PermRestore),
+		Deploy:  slices.Contains(granted, access.Deploy),
+		Login:   slices.Contains(granted, access.Login),
+		Backup:  slices.Contains(granted, access.Backup),
+		Restore: slices.Contains(granted, access.Restore),
 	}
 }
 
@@ -66,7 +68,7 @@ func (s *Server) siteExists(env, site string) (bool, error) {
 // a refusal before the existence check, so a refusal says nothing about
 // which sites exist.
 func (s *Server) viewable(c *echo.Context, env, site string) error {
-	if !s.allows(sessionOf(c), env, site, PermView) {
+	if !s.allows(sessionOf(c), env, site, access.View) {
 		return echo.ErrForbidden
 	}
 
@@ -111,7 +113,7 @@ func (s *Server) fleet(c *echo.Context) error {
 		return err
 	}
 
-	canView := func(env, site string) bool { return s.allows(sess, env, site, PermView) }
+	canView := func(env, site string) bool { return s.allows(sess, env, site, access.View) }
 	view := fleetView(envs, listed, canView, rows)
 
 	return render(c, http.StatusOK, ui.FleetPage(s.page(c, l.T(i18n.SitesTitle)), view))
@@ -119,7 +121,7 @@ func (s *Server) fleet(c *echo.Context) error {
 
 // visibleEnvironments finds the environments with a site the person may
 // see, and whether the fleet has any site at all.
-func (s *Server) visibleEnvironments(sess Session, envs []Environment) ([]string, bool, error) {
+func (s *Server) visibleEnvironments(sess session.Session, envs []Environment) ([]string, bool, error) {
 	anySite := false
 
 	var listed []string
@@ -132,7 +134,7 @@ func (s *Server) visibleEnvironments(sess Session, envs []Environment) ([]string
 
 		anySite = anySite || len(sites) > 0
 
-		if slices.ContainsFunc(sites, func(site string) bool { return s.allows(sess, env.Name, site, PermView) }) {
+		if slices.ContainsFunc(sites, func(site string) bool { return s.allows(sess, env.Name, site, access.View) }) {
 			listed = append(listed, env.Name)
 		}
 	}
@@ -233,7 +235,7 @@ func (s *Server) statusFragment(c *echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	engineering := s.allows(sessionOf(c), env, site, PermDeploy)
+	engineering := s.allows(sessionOf(c), env, site, access.Deploy)
 
 	status := ui.CellStatus{
 		Engineering: engineering, Commit: "", Dirty: false, Drift: ui.DriftUnknown,
@@ -314,7 +316,7 @@ func (s *Server) sitePage(c *echo.Context) error {
 		view.Unavailable = true
 	}
 
-	if environment.PromoteFrom != "" && s.allows(sess, environment.PromoteFrom, site, PermView) {
+	if environment.PromoteFrom != "" && s.allows(sess, environment.PromoteFrom, site, access.View) {
 		plan, err := s.deps.Ops.PlanPromotion(env, site)
 		if err == nil {
 			view.PromoteFrom = environment.PromoteFrom
@@ -369,7 +371,7 @@ func (s *Server) diffFragment(c *echo.Context) error {
 		return err
 	}
 
-	if !s.allows(sessionOf(c), env, site, PermDeploy) {
+	if !s.allows(sessionOf(c), env, site, access.Deploy) {
 		return echo.ErrForbidden
 	}
 
@@ -392,7 +394,7 @@ func (s *Server) historyFragment(c *echo.Context) error {
 		return err
 	}
 
-	if !s.allows(sessionOf(c), env, site, PermDeploy) {
+	if !s.allows(sessionOf(c), env, site, access.Deploy) {
 		return echo.ErrForbidden
 	}
 
@@ -439,7 +441,7 @@ func (s *Server) backupsFragment(c *echo.Context) error {
 	sess := sessionOf(c)
 	ctx := c.Request().Context()
 	view := ui.BackupsView{
-		Env: env, Site: site, CSRF: sess.CSRF, CanRestore: s.allows(sess, env, site, PermRestore),
+		Env: env, Site: site, CSRF: sess.CSRF, CanRestore: s.allows(sess, env, site, access.Restore),
 		Failed: false, Rows: nil,
 	}
 

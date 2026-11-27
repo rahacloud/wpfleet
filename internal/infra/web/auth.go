@@ -1,40 +1,23 @@
 package web
 
 import (
-	"crypto/rand"
-	"crypto/subtle"
-	"encoding/base64"
 	"net/http"
 
 	"github.com/labstack/echo/v5"
 
+	"github.com/rahacloud/wpfleet/internal/infra/session"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 )
-
-// flowTokenBytes is the entropy of the state, the nonce and the PKCE
-// verifier: 32 bytes give a 43-character verifier, the shortest RFC 7636
-// allows.
-const flowTokenBytes = 32
-
-// flowToken is a random URL-safe token for the sign-in flow.
-func flowToken() string {
-	b := make([]byte, flowTokenBytes)
-	_, _ = rand.Read(b) // crypto/rand.Read never fails since Go 1.24
-
-	return base64.RawURLEncoding.EncodeToString(b)
-}
 
 // login starts a sign-in: it keeps the state, nonce, PKCE verifier and the
 // return path in the flow cookie and sends the browser to the provider.
 func (s *Server) login(c *echo.Context) error {
-	flow := Flow{
-		State:    flowToken(),
-		Nonce:    flowToken(),
-		Verifier: flowToken(),
-		Return:   safeReturn(c.QueryParam("return")),
+	flow, err := session.NewFlow(c.QueryParam("return"))
+	if err != nil {
+		return err
 	}
 
-	err := s.deps.Sessions.SetFlow(c.Response(), flow)
+	err = s.deps.Sessions.SetFlow(c.Response(), flow)
 	if err != nil {
 		return err
 	}
@@ -55,7 +38,7 @@ func (s *Server) callback(c *echo.Context) error {
 	}
 
 	flow, ok := s.deps.Sessions.TakeFlow(c.Response(), c.Request())
-	if !ok || subtle.ConstantTimeCompare([]byte(flow.State), []byte(c.QueryParam("state"))) != 1 {
+	if !ok || !flow.CheckState(c.QueryParam("state")) {
 		s.log.WarnContext(ctx, "a sign-in callback without its flow or with another state")
 
 		return s.signInFailed(c)
@@ -80,7 +63,7 @@ func (s *Server) callback(c *echo.Context) error {
 
 	s.log.InfoContext(ctx, "signed in", "email", id.Email, "groups", id.Groups)
 
-	return c.Redirect(http.StatusSeeOther, safeReturn(flow.Return))
+	return c.Redirect(http.StatusSeeOther, session.SafeReturnPath(flow.ReturnTo))
 }
 
 // signInFailed says the sign-in failed and offers another.
@@ -119,5 +102,5 @@ func (s *Server) setLang(c *echo.Context) error {
 		return err
 	}
 
-	return c.Redirect(http.StatusSeeOther, safeReturn(c.FormValue("return")))
+	return c.Redirect(http.StatusSeeOther, session.SafeReturnPath(c.FormValue("return")))
 }

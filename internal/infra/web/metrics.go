@@ -24,7 +24,7 @@ func newMetrics() *metrics {
 		//nolint:exhaustruct_v5 // the other options are for subsystems and constant labels
 		actions: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "wpfleet_actions_total",
-			Help: "Actions people asked for, by action and result (ok, failed, refused, busy).",
+			Help: "Actions people asked for, by action and result (ok, failed, denied, busy).",
 		}, []string{"action", "result"}),
 		//nolint:exhaustruct_v5 // as above
 		running: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -34,7 +34,7 @@ func newMetrics() *metrics {
 		//nolint:exhaustruct_v5 // as above
 		syncs: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "wpfleet_git_syncs_total",
-			Help: "Syncs of the fleet clone started by the webhook, by result.",
+			Help: "Syncs of the fleet clone started by the webhook or the poll, by result.",
 		}, []string{"result"}),
 	}
 

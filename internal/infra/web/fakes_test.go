@@ -10,7 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rahacloud/wpfleet/internal/domain/access"
+	"github.com/rahacloud/wpfleet/internal/domain/audit"
 	"github.com/rahacloud/wpfleet/internal/domain/fleet"
+	"github.com/rahacloud/wpfleet/internal/infra/gitrepo"
+	"github.com/rahacloud/wpfleet/internal/infra/session"
 	"github.com/rahacloud/wpfleet/internal/infra/web"
 	"github.com/rahacloud/wpfleet/internal/ops"
 	"github.com/rahacloud/wpfleet/internal/testutil"
@@ -28,7 +32,7 @@ var errFake = errors.New("fake failure")
 // fakeAuth is an Authenticator that names one person.
 type fakeAuth struct {
 	mu       sync.Mutex
-	identity web.Identity
+	identity access.Identity
 	err      error
 	code     string
 	verifier string
@@ -39,7 +43,7 @@ func (a *fakeAuth) AuthURL(state, nonce, verifier string) string {
 	return "https://sso.example.com/auth?state=" + state + "&nonce=" + nonce + "&challenge-of=" + verifier
 }
 
-func (a *fakeAuth) Exchange(_ context.Context, code, verifier, nonce string) (web.Identity, error) {
+func (a *fakeAuth) Exchange(_ context.Context, code, verifier, nonce string) (access.Identity, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -51,17 +55,19 @@ func (a *fakeAuth) Exchange(_ context.Context, code, verifier, nonce string) (we
 // fakeSessions keeps sessions and flows in memory, keyed by a cookie value.
 type fakeSessions struct {
 	mu       sync.Mutex
-	sessions map[string]web.Session
-	flows    map[string]web.Flow
+	sessions map[string]session.Session
+	flows    map[string]session.Flow
 	next     int
 }
 
 func newFakeSessions() *fakeSessions {
-	return &fakeSessions{mu: sync.Mutex{}, sessions: map[string]web.Session{}, flows: map[string]web.Flow{}, next: 0}
+	return &fakeSessions{
+		mu: sync.Mutex{}, sessions: map[string]session.Session{}, flows: map[string]session.Flow{}, next: 0,
+	}
 }
 
-func (f *fakeSessions) Get(r *http.Request) (web.Session, bool) {
-	var none web.Session
+func (f *fakeSessions) Get(r *http.Request) (session.Session, bool) {
+	var none session.Session
 
 	c, err := r.Cookie(sessionCookie)
 	if err != nil {
@@ -76,7 +82,7 @@ func (f *fakeSessions) Get(r *http.Request) (web.Session, bool) {
 	return s, ok
 }
 
-func (f *fakeSessions) Set(w http.ResponseWriter, s web.Session) error {
+func (f *fakeSessions) Set(w http.ResponseWriter, s session.Session) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -92,11 +98,11 @@ func (f *fakeSessions) Clear(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", MaxAge: -1})
 }
 
-func (f *fakeSessions) New(id web.Identity, lang string) (web.Session, error) {
-	return web.Session{Identity: id, Expires: time.Now().Add(time.Hour), CSRF: "csrf-" + id.Subject, Lang: lang}, nil
+func (f *fakeSessions) New(id access.Identity, lang string) (session.Session, error) {
+	return session.Session{Identity: id, Expires: time.Now().Add(time.Hour), CSRF: "csrf-" + id.Subject, Lang: lang}, nil
 }
 
-func (f *fakeSessions) CheckCSRF(r *http.Request, s web.Session) bool {
+func (f *fakeSessions) CheckCSRF(r *http.Request, s session.Session) bool {
 	got := r.FormValue("csrf")
 	if got == "" {
 		got = r.Header.Get("X-Csrf-Token")
@@ -105,7 +111,7 @@ func (f *fakeSessions) CheckCSRF(r *http.Request, s web.Session) bool {
 	return got != "" && got == s.CSRF
 }
 
-func (f *fakeSessions) SetFlow(w http.ResponseWriter, flow web.Flow) error {
+func (f *fakeSessions) SetFlow(w http.ResponseWriter, flow session.Flow) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
@@ -116,8 +122,8 @@ func (f *fakeSessions) SetFlow(w http.ResponseWriter, flow web.Flow) error {
 	return nil
 }
 
-func (f *fakeSessions) TakeFlow(_ http.ResponseWriter, r *http.Request) (web.Flow, bool) {
-	var none web.Flow
+func (f *fakeSessions) TakeFlow(_ http.ResponseWriter, r *http.Request) (session.Flow, bool) {
+	var none session.Flow
 
 	c, err := r.Cookie(flowCookie)
 	if err != nil {
@@ -140,22 +146,24 @@ func (f *fakeSessions) id() string {
 }
 
 // signIn stores a session for id and returns its cookie.
-func (f *fakeSessions) signIn(id web.Identity, lang string) *http.Cookie {
+func (f *fakeSessions) signIn(id access.Identity, lang string) *http.Cookie {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	key := f.id()
-	f.sessions[key] = web.Session{Identity: id, Expires: time.Now().Add(time.Hour), CSRF: "csrf-" + id.Subject, Lang: lang}
+	f.sessions[key] = session.Session{
+		Identity: id, Expires: time.Now().Add(time.Hour), CSRF: "csrf-" + id.Subject, Lang: lang,
+	}
 
 	return &http.Cookie{Name: sessionCookie, Value: key} //nolint:exhaustruct_v5,gosec // a test cookie
 }
 
 // fakeAccess grants each group permissions per environment, on every site;
 // every permission implies view, as the real rules do.
-type fakeAccess map[string]map[string][]web.Permission
+type fakeAccess map[string]map[string][]access.Permission
 
-func (a fakeAccess) Permissions(groups []string, env, _ string) []web.Permission {
-	var granted []web.Permission
+func (a fakeAccess) Permissions(groups []string, env, _ string) []access.Permission {
+	var granted []access.Permission
 
 	for _, g := range groups {
 		for _, p := range a[g][env] {
@@ -165,21 +173,21 @@ func (a fakeAccess) Permissions(groups []string, env, _ string) []web.Permission
 		}
 	}
 
-	if len(granted) > 0 && !slices.Contains(granted, web.PermView) {
-		granted = append(granted, web.PermView)
+	if len(granted) > 0 && !slices.Contains(granted, access.View) {
+		granted = append(granted, access.View)
 	}
 
 	return granted
 }
 
-func (a fakeAccess) Allows(groups []string, env, site string, perm web.Permission) bool {
+func (a fakeAccess) Allows(groups []string, env, site string, perm access.Permission) bool {
 	return slices.Contains(a.Permissions(groups, env, site), perm)
 }
 
 // commitCall is one call of fakeRepo.Commit.
 type commitCall struct {
 	msg    string
-	author web.Signature
+	author gitrepo.Signature
 	files  []string
 }
 
@@ -190,7 +198,7 @@ type fakeRepo struct {
 	dir     string
 	syncs   int
 	commits []commitCall
-	log     []web.LogEntry
+	log     []gitrepo.LogEntry
 	logPath string
 }
 
@@ -211,7 +219,7 @@ func (r *fakeRepo) Head() string {
 }
 
 func (r *fakeRepo) Commit(
-	_ context.Context, msg string, author web.Signature, edit func(string) ([]string, error),
+	_ context.Context, msg string, author gitrepo.Signature, edit gitrepo.Edit,
 ) (string, error) {
 	files, err := edit(r.dir)
 	if err != nil {
@@ -227,7 +235,7 @@ func (r *fakeRepo) Commit(
 	return r.head, nil
 }
 
-func (r *fakeRepo) FileLog(_ context.Context, path string, _ int) ([]web.LogEntry, error) {
+func (r *fakeRepo) FileLog(_ context.Context, path string, _ int) ([]gitrepo.LogEntry, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -444,10 +452,10 @@ func (o *fakeOps) image(env, site string) string {
 // auditLog records the audit records.
 type auditLog struct {
 	mu      sync.Mutex
-	records []web.AuditRecord
+	records []audit.Record
 }
 
-func (a *auditLog) write(_ context.Context, r web.AuditRecord) {
+func (a *auditLog) write(_ context.Context, r audit.Record) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -455,7 +463,7 @@ func (a *auditLog) write(_ context.Context, r web.AuditRecord) {
 }
 
 // all returns the records so far.
-func (a *auditLog) all() []web.AuditRecord {
+func (a *auditLog) all() []audit.Record {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -463,7 +471,7 @@ func (a *auditLog) all() []web.AuditRecord {
 }
 
 // only returns the one record written, stopping the test otherwise.
-func (a *auditLog) only(tb testing.TB) web.AuditRecord {
+func (a *auditLog) only(tb testing.TB) audit.Record {
 	tb.Helper()
 
 	records := a.all()

@@ -22,6 +22,7 @@ import (
 	copycmd "github.com/rahacloud/wpfleet/internal/cmd/copy"
 	"github.com/rahacloud/wpfleet/internal/cmd/deploy"
 	"github.com/rahacloud/wpfleet/internal/cmd/promote"
+	"github.com/rahacloud/wpfleet/internal/cmd/serve"
 	"github.com/rahacloud/wpfleet/internal/cmd/sites"
 )
 
@@ -49,6 +50,7 @@ func New() *cli.Command {
 			admin.Command(),
 			backup.Command(),
 			copycmd.Command(),
+			serve.Command(),
 		},
 	}
 }

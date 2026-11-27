@@ -15,15 +15,23 @@ nameOverride: ""
 fullnameOverride: ""
 
 # The container's arguments. The configuration file is the ConfigMap below,
-# mounted at /etc/wpfleet/wpfleet.yaml; the clone of the fleet repository
-# lives on an emptyDir at /var/lib/wpfleet/fleet and is cloned again at
-# every start.
+# mounted at /etc/wpfleet/wpfleet.yaml; the data directory is an emptyDir at
+# /var/lib/wpfleet that holds the clone of the fleet repository (fleet/) and
+# the snapshots the operations read (snapshots/), cloned again at every
+# start. --shutdown-timeout must stay below terminationGracePeriodSeconds.
 args:
   - serve
   - --config
   - /etc/wpfleet/wpfleet.yaml
-  - --clone
-  - /var/lib/wpfleet/fleet
+  - --data
+  - /var/lib/wpfleet
+  - --shutdown-timeout
+  - 5m
+
+# How long Kubernetes waits for a stopping server. A stop waits for running
+# actions, and a deploy cut short leaves its Helm release pending, so this is
+# longer than a deploy that waits for readiness.
+terminationGracePeriodSeconds: 330
 
 # wpfleet.yaml for the server, as YAML: the environments and the server
 # section of docs/design.md. server.listen and server.metricsListen are set
