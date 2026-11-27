@@ -144,7 +144,7 @@ If pkg.go.dev still shows nothing, open the page and choose **Request "github.co
 
 ## 10. The announcement
 
-Announce it only after every step above is done, so that the first people who arrive find a release they can verify and badges that work. Say what wpfleet does, that it is v0.1 and what that means, and link the README and [getting-started.md](getting-started.md). Never name an organization that has used wpfleet without its written agreement. The announcement goes out under RahaCloud's name, so it goes through RahaCloud's review for official documents first.
+Announce it only after every step above is done, so that the first people who arrive find a release they can verify and badges that work. Say what wpfleet does, that it is v0.1 and what that means, link the README and [getting-started.md](getting-started.md), and point to [ROADMAP.md](ROADMAP.md) for what comes next. Never name an organization that has used wpfleet without its written agreement. The announcement goes out under RahaCloud's name, so it goes through RahaCloud's review for official documents first.
 
 ## 11. Afterwards
 

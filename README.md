@@ -119,3 +119,4 @@ Apache-2.0, see [LICENSE](LICENSE).
 - [For content teams](docs/for-content-teams.md): what editors can do in the web UI, in plain words.
 - [Example fleet](examples/fleet): a small fleet with two environments and one site.
 - [Design](docs/design.md): how wpfleet works inside.
+- [Roadmap](docs/ROADMAP.md): what comes after the first release, and what is not planned and why.

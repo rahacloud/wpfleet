@@ -315,4 +315,4 @@ In the cluster, an environment with an empty `kubeconfig` uses the pod's Service
 
 ## Not in the first version
 
-An operator with a `WordPressSite` resource, image builds inside the cluster (BuildKit or Kaniko), plugin vulnerability reports, restore tests on a schedule, and in the server: pull requests instead of pushes, `build`, `copy`, and more than one replica. The CLI came first so that its model could settle; the server is a second front end on the same operations, not a new model.
+An operator with a `WordPressSite` resource, image builds inside the cluster (BuildKit or Kaniko), plugin vulnerability reports, restore tests on a schedule, and in the server: pull requests instead of pushes, `build`, `copy`, and more than one replica. The CLI came first so that its model could settle; the server is a second front end on the same operations, not a new model. [ROADMAP.md](ROADMAP.md) says which of these are planned and when: the vulnerability report comes first, scheduled restore tests and pull requests instead of pushes (as two-person publishing) next, and the operator later.
