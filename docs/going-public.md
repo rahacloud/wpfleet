@@ -12,13 +12,12 @@ Do not start before wpfleet has run on a real staging and development fleet, on 
 - `copy` gave one environment a working copy of the other.
 - `wpfleet serve` ran from its chart with the organization's real identity provider, and a person with only an editor's groups saw only their sites and could open the admin.
 
-Fix what the trial finds on `main` first. Then change the status line at the top of `README.md`: say what ran on a real fleet and what did not, and never name the organization that ran it. The trial's own notes stay in that organization's private repository.
+Fix what the trial finds on `main` first. Then change the status line at the top of `README.md` to say what ran on a real fleet and what did not, and never name the organization that ran it. Change only what the trial showed: the words that say there is no release yet stay until step 6, which rewrites them just before the tag. The trial's own notes stay in that organization's private repository.
 
 ## 2. The files a public repository needs
 
 - `CODE_OF_CONDUCT.md` promises a dedicated contact address for reports. Put the address in the Enforcement section, in place of the sentence that promises it.
 - `SECURITY.md` sends reporters to GitHub's private vulnerability reporting, which `hack/go-public.sh` turns on in step 6. Read it once more and check the response times are ones the maintainers can keep.
-- Check that `main` is green: CI and Security on its last commit, and Release check on its last run.
 
 ## 3. The history scan
 
@@ -52,6 +51,8 @@ git remote add origin git@github.com:rahacloud/wpfleet.git
 git push --force origin main
 ```
 
+Then replace the section "What the scan of 2026-11-27 found" in this file with what was done (the message rewritten, the date, and whether the author email changed): the hash `88aa0e1` that it quotes stops resolving after the rewrite. Commit that on the rewritten `main` before step 5.
+
 Afterwards, every other clone and worktree has old history: delete it and clone again, or `git fetch origin && git reset --hard origin/main` on a clean `main`. A commit hash quoted anywhere from before the rewrite stops resolving. GitHub can still serve the old commits to someone who knows their hashes until it collects them; the only pull request so far (#1) was closed before `88aa0e1`, so no pull request ref keeps them. If that matters, ask GitHub Support to purge the cached views before step 5.
 
 **Decision 2, optional: the author email.** Every commit carries the maintainer's personal email address as author and committer, and it becomes public with the history. Keep it, or replace it with the GitHub noreply address (`<id>+<login>@users.noreply.github.com`; `gh api user --jq '"\(.id)+\(.login)"'` prints the first part) in the same rewrite. To replace it, write one mailmap line, `Name <id+login@users.noreply.github.com> <old address>`, to `../wpfleet-mailmap.txt`, and run this in place of the `git filter-repo` line above:
@@ -74,7 +75,16 @@ Repository secrets and variables stay secret.
 
 ## 5. Make the repository public
 
-In the repository's settings, under **Danger Zone**, choose **Change visibility** and make it public, or:
+First check, in a fresh clone of what GitHub holds now, that the rewrite of Decision 1 reached it. The command must print 0; anything else means the old history is still there, and the visibility must not change:
+
+```bash
+git clone --mirror git@github.com:rahacloud/wpfleet.git wpfleet-check
+git -C wpfleet-check log --all --format=%B | grep -c 'pull through the'   # must print 0
+```
+
+Then check that `main` is green on the commit that goes public: CI and Security on its last commit, and Release check on its last run. The force-push of step 3 gave every commit a new hash and started new runs, so a green result from before it does not count.
+
+When both checks pass, in the repository's settings, under **Danger Zone**, choose **Change visibility** and make it public, or:
 
 ```bash
 gh repo edit rahacloud/wpfleet --visibility public --accept-visibility-change-consequences
@@ -102,7 +112,12 @@ Organization owners are named on their own because an owner who is not a collabo
 
 The script refuses to run while the repository is private: rulesets and secret scanning are not available on a private repository on the organization's plan. Then check **Settings > Rules** and **Settings > Code security** by hand, and do what the API cannot: upload a social preview image (1280 by 640 pixels, from `docs/images/banner.svg`) under **Settings > General**.
 
-Push one commit to `main` afterwards (a small documentation fix will do). It runs CI, Security, CodeQL and Scorecard for the first time on the public repository, and the README's CI and Scorecard badges start to show a result.
+Then push one commit to `main` that rewrites, for a released v0.1.0, every text that says wpfleet has no release yet. The tag in step 7 packs the README into every archive, and the announcement in step 10 sends people to it, so these must change before the tag, not after:
+
+- `README.md`: the status line at the top ("Status: before its first release, …"), keeping what step 1 wrote about the trial, and the sentence under the install command ("Until the first release, `@latest` builds the newest commit on `main`.");
+- `docs/getting-started.md`, under "Install wpfleet": "Until the first release you build it from source" and the paragraph that starts "After the first release", so that the releases page and `go install …@latest` come first and building from source comes second.
+
+`grep -rn 'first release' README.md docs/getting-started.md` then finds nothing that is no longer true. This commit runs CI, Security, CodeQL and Scorecard for the first time on the public repository, and the README's CI and Scorecard badges start to show a result. Wait for it to pass before step 7.
 
 ## 7. The first tag
 
@@ -153,7 +168,11 @@ Announce it only after every step above is done, so that the first people who ar
 Remove what only made sense while the repository was private, in one commit:
 
 - the section "Before the repository is public" in [releasing.md](releasing.md), and its link to this file;
-- the `if: ${{ !github.event.repository.private }}` conditions in the workflows, which now always pass;
+- the conditions on `github.event.repository.private` in the workflows, which now always pass. They are not all the same shape:
+  - `.github/workflows/release.yml`: remove the `if: ${{ !github.event.repository.private }}` line of the steps "Attest the archives, SBOMs and checksums", "Attest the image" and "Attest the WordPress chart", and the comment above the first, which says attestations wait for a public repository; "Attest the server chart" has a compound condition, so keep its other half, `if: ${{ steps.push.outputs.wpfleet != '' }}`, which skips it when the server chart was not pushed;
+  - `.github/workflows/scorecard.yml` and `.github/workflows/codeql.yml`: remove the job's `if:` line;
+  - `.github/workflows/security.yml`: zizmor's `advanced-security: ${{ !github.event.repository.private }}` is a value, not a condition; set it to `advanced-security: true` and rewrite the comment above it, which describes the private repository;
+  - then `grep -rn 'repository.private' .github` finds nothing;
 - in `CLAUDE.md`, "The repository will be public" becomes "The repository is public"; the rule under it stays.
 
 Keep this file: it records how the repository was opened and which settings it has.
