@@ -2,7 +2,7 @@
 
 Manage a fleet of WordPress sites on Kubernetes from one Git repository: deploy every site with one shared Helm chart, build and promote site images from development to production, open a site's admin with a one-time link, and back sites up to S3 and restore them.
 
-> **Status: before its first release.** Every command in [docs/design.md](docs/design.md) is built and covered by tests against fakes, but none has run against a real cluster, registry or bucket yet; expect rough edges until v0.1. `docs/design.md` is the contract the commands are built against.
+> **Status: before its first release.** Every command in [docs/design.md](docs/design.md) is built and covered by tests against fakes. `sites list`, `deploy`, `diff`, `promote` and `admin` have run against a real cluster (a local kind cluster, 2026-11-27); `build`, `backup` and `copy` have not yet run against a real registry or bucket. Expect rough edges until v0.1. `docs/design.md` is the contract the commands are built against.
 
 ## How it works
 
@@ -19,6 +19,18 @@ wpfleet backup run blog -e production
 wpfleet backup restore blog -e staging --stamp latest --uploads
 wpfleet copy blog --from production --to staging
 ```
+
+![wpfleet listing a fleet, promoting a site from development to staging, deploying it and making a login link](docs/images/demo.gif)
+
+## Open a site's admin without its password
+
+`wpfleet admin` stores a one-time token in the site through wp-cli and prints a link to it. A must-use plugin that the chart mounts answers the link once, within 60 seconds, and logs in as the site's first administrator, or as `--user`. No password is shared or reset, and the site stores only the hash of the token.
+
+![The WordPress dashboard of a demo site, opened with a link from wpfleet admin](docs/images/admin-dashboard.png)
+
+The notice at the top is expected: the chart turns off plugin, theme and core updates in the dashboard, because a site's code is its image, and a new version arrives through `wpfleet build` and `promote` instead.
+
+The pictures come from a demo fleet of three invented sites on a local kind cluster.
 
 ## Development
 
