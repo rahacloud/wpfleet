@@ -1293,7 +1293,10 @@ func TestSignInWithoutAccessIsRefused(t *testing.T) {
 
 	w := h.signInAs(stranger())
 	testutil.Equal(t, "status", w.Code, http.StatusForbidden)
-	testutil.Contains(t, "page", w.Body.String(), "Your account has no access to any site.")
+	testutil.Contains(t, "page", w.Body.String(), "Your account has no access to any site.",
+		"Ask your support team or the person who set up this tool", `href="mailto:help@example.com"`, "Contact support")
+	testutil.NotContains(t, "no tool name", w.Body.String(), "runs wpfleet")
+	testutil.NotContains(t, "no identity-provider words", w.Body.String(), "groups")
 	testutil.Equal(t, "no session", len(w.Result().Cookies()), 0)
 
 	rec := h.audit.only(t)

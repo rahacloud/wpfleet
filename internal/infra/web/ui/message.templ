@@ -2,7 +2,8 @@ package ui
 
 // MessagePage says one thing in plain words: a refusal, an error, or that
 // the person signed out. A refusal or an error also says what the person can
-// do about it and whom to ask.
+// do about it and whom to ask, before sign-in too: a person refused at the
+// callback has no session and the most need of a name to ask.
 templ MessagePage(p Page, m Message) {
 	@Layout(p) {
 		<h1>{ m.Title }</h1>
@@ -15,7 +16,7 @@ templ MessagePage(p Page, m Message) {
 			if m.Hint != "" {
 				<p class="wf-help">{ m.Hint }</p>
 			}
-			if m.Bad && p.User != "" {
+			if m.Bad {
 				@supportBlock(p.L, m.Support)
 			}
 			if m.Link != "" {
