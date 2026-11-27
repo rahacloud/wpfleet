@@ -86,6 +86,7 @@ type Server struct {
 	unsigned   bool
 	noIDToken  bool
 	issuer     string
+	scopes     []string
 	tokenCalls int
 }
 
@@ -106,6 +107,7 @@ func New(tb testing.TB, clientID, clientSecret string) *Server {
 		unsigned:     false,
 		noIDToken:    false,
 		issuer:       "",
+		scopes:       nil,
 		tokenCalls:   0,
 	}
 
@@ -174,6 +176,15 @@ func (s *Server) AdvertiseIssuer(issuer string) {
 	s.issuer = issuer
 }
 
+// AdvertiseScopes makes discovery list scopes as scopes_supported; with
+// none, discovery leaves the field out, as it is optional.
+func (s *Server) AdvertiseScopes(scopes ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.scopes = scopes
+}
+
 // TokenCalls is how many requests reached the token endpoint.
 func (s *Server) TokenCalls() int {
 	s.mu.Lock()
@@ -234,13 +245,14 @@ func (s *Server) Redirect(tb testing.TB, authURL string) string {
 func (s *Server) discovery(w http.ResponseWriter, _ *http.Request) {
 	s.mu.Lock()
 	issuer := s.issuer
+	scopes := s.scopes
 	s.mu.Unlock()
 
 	if issuer == "" {
 		issuer = s.srv.URL
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	doc := map[string]any{
 		"issuer":                                issuer,
 		"authorization_endpoint":                s.srv.URL + "/authorize",
 		"token_endpoint":                        s.srv.URL + "/token",
@@ -249,7 +261,12 @@ func (s *Server) discovery(w http.ResponseWriter, _ *http.Request) {
 		"subject_types_supported":               []string{"public"},
 		"id_token_signing_alg_values_supported": []string{algRS256},
 		"code_challenge_methods_supported":      []string{"S256"},
-	})
+	}
+	if scopes != nil {
+		doc["scopes_supported"] = scopes
+	}
+
+	writeJSON(w, http.StatusOK, doc)
 }
 
 func (s *Server) jwks(w http.ResponseWriter, _ *http.Request) {

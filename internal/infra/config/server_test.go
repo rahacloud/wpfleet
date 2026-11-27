@@ -29,6 +29,7 @@ server:
   oidc:
     issuer: https://sso.example.com/realms/main
     clientID: wpfleet
+    scopes: [openid, email, groups]
   session:
     maxAge: 4h
   admin:
@@ -59,6 +60,7 @@ func TestLoadServer(t *testing.T) {
 	testutil.Equal(t, "poll", s.Git.PollInterval, 30*time.Second)
 	testutil.Equal(t, "committer", s.Git.Committer, config.Committer{Name: "wpfleet", Email: "wpfleet@example.com"})
 	testutil.Equal(t, "client", s.OIDC.ClientID, "wpfleet")
+	testutil.DeepEqual(t, "scopes", s.OIDC.Scopes, []string{"openid", "email", "groups"})
 	testutil.Equal(t, "max age", s.Session.MaxAge, 4*time.Hour)
 	testutil.True(t, "match email off", !s.Admin.MatchEmail)
 
@@ -90,6 +92,7 @@ func TestServerDefaults(t *testing.T) {
 	testutil.Equal(t, "poll", s.Git.PollInterval, time.Minute)
 	testutil.Equal(t, "committer name", s.Git.Committer.Name, "wpfleet")
 	testutil.Equal(t, "groups claim", s.OIDC.GroupsClaim, "groups")
+	testutil.Equal(t, "no scopes: the provider's defaults", len(s.OIDC.Scopes), 0)
 	testutil.Equal(t, "max age", s.Session.MaxAge, 8*time.Hour)
 	testutil.True(t, "match email", s.Admin.MatchEmail)
 	testutil.Equal(t, "no rules", len(s.Access), 0)

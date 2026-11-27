@@ -90,6 +90,10 @@ type OIDC struct {
 	ClientID string `json:"clientID" koanf:"clientID"`
 	// GroupsClaim is the ID token claim that lists the person's groups.
 	GroupsClaim string `json:"groupsClaim" koanf:"groupsClaim"`
+	// Scopes are the scopes the sign-in asks for. Empty asks for openid,
+	// email and profile, and groups when the provider's discovery lists it
+	// (Dex puts the groups claim in the ID token only then).
+	Scopes []string `json:"scopes" koanf:"scopes"`
 	// AssumeEmailVerified keeps an email claim that comes without
 	// email_verified, for a provider whose email people cannot change. Off
 	// by default: such an email is dropped and never matches a WordPress
@@ -138,7 +142,7 @@ func DefaultServer() Server {
 			PollInterval: time.Minute,
 			Committer:    Committer{Name: "wpfleet", Email: ""},
 		},
-		OIDC:    OIDC{Issuer: "", ClientID: "", GroupsClaim: "groups", AssumeEmailVerified: false},
+		OIDC:    OIDC{Issuer: "", ClientID: "", GroupsClaim: "groups", Scopes: nil, AssumeEmailVerified: false},
 		Session: Session{MaxAge: 8 * time.Hour}, //nolint:mnd // the design's default sign-in length
 		Admin:   Admin{MatchEmail: true},
 		Access:  nil,

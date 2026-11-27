@@ -146,6 +146,39 @@ func TestScopesAlwaysIncludeOpenID(t *testing.T) {
 	testutil.Equal(t, "scope", u.Query().Get("scope"), "openid email groups")
 }
 
+// Dex puts the groups claim in the ID token only when the groups scope is
+// asked for, and says so in discovery; a provider that does not list the
+// scope never gets it, since some (Google among them) refuse a scope they do
+// not know.
+func TestDefaultScopesAskForAdvertisedGroups(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name       string
+		advertised []string
+		configured []string
+		want       string
+	}{
+		{"groups advertised", strings.Fields("openid email groups profile"), nil, "openid email profile groups"},
+		{"groups not advertised", strings.Fields("openid email profile"), nil, "openid email profile"},
+		{"no scopes_supported", nil, nil, "openid email profile"},
+		{"configured scopes win", strings.Fields("openid groups"), strings.Fields("email"), "openid email"},
+	} {
+		server := oidctest.New(t, clientID, clientSecret)
+		server.AdvertiseScopes(tc.advertised...)
+
+		c := config(server.Issuer())
+		c.Scopes = tc.configured
+
+		provider, err := oidc.New(t.Context(), c)
+		testutil.NoError(t, err)
+
+		u, err := url.Parse(provider.AuthURL("s", "n", "v"))
+		testutil.NoError(t, err)
+		testutil.Equal(t, "scope with "+tc.name, u.Query().Get("scope"), tc.want)
+	}
+}
+
 func TestExchangeRefusesTheWrongFlow(t *testing.T) {
 	t.Parallel()
 

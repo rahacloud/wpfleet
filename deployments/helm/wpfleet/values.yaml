@@ -57,6 +57,10 @@ config:
       issuer: https://sso.example.com/realms/main
       clientID: wpfleet
       groupsClaim: groups
+      # The scopes the sign-in asks for. Empty asks for openid, email and
+      # profile, and groups when the provider's discovery lists it, which
+      # Dex needs before it sends the groups claim.
+      scopes: []
       # Keep an email claim that comes without email_verified. Leave it off
       # for a provider whose users can edit their email (Azure AD).
       assumeEmailVerified: false

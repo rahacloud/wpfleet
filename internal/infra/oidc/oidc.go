@@ -48,10 +48,15 @@ var ErrNoSubject = errors.New("ID token has no subject")
 // list of strings.
 var ErrGroupsClaim = errors.New("groups claim is not a list of strings")
 
-// DefaultScopes are the scopes requested when the configuration names none.
+// DefaultScopes are the scopes requested when the configuration names none;
+// GroupsScope is added to them when the provider advertises it.
 func DefaultScopes() []string {
 	return []string{gooidc.ScopeOpenID, "email", "profile"}
 }
+
+// GroupsScope is the scope that makes Dex, and providers like it, put the
+// groups claim in the ID token.
+const GroupsScope = "groups"
 
 // Config is how the server talks to the provider.
 type Config struct {
@@ -70,7 +75,8 @@ type Config struct {
 	// DefaultGroupsClaim. A name with dots that is not itself a claim is read
 	// as a path into nested objects, e.g. realm_access.roles.
 	GroupsClaim string
-	// Scopes are the requested scopes; empty is DefaultScopes. openid is
+	// Scopes are the requested scopes; empty is DefaultScopes, plus
+	// GroupsScope when discovery lists it in scopes_supported. openid is
 	// always requested.
 	Scopes []string
 	// AssumeEmailVerified keeps an email claim that comes without
@@ -124,7 +130,10 @@ func New(ctx context.Context, c Config) (*Provider, error) {
 
 	scopes := c.Scopes
 	if len(scopes) == 0 {
-		scopes = DefaultScopes()
+		scopes, err = defaultScopes(provider)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if !slices.Contains(scopes, gooidc.ScopeOpenID) {
@@ -151,6 +160,28 @@ func New(ctx context.Context, c Config) (*Provider, error) {
 		groupsClaim:    groupsClaim,
 		assumeVerified: c.AssumeEmailVerified,
 	}, nil
+}
+
+// defaultScopes are DefaultScopes, plus GroupsScope when the provider's
+// discovery lists it. Dex sends the groups claim only for that scope, while
+// some providers (Google among them) refuse a scope they do not know, so it
+// is asked for only where it is advertised.
+func defaultScopes(provider *gooidc.Provider) ([]string, error) {
+	var discovery struct {
+		ScopesSupported []string `json:"scopes_supported"`
+	}
+
+	err := provider.Claims(&discovery)
+	if err != nil {
+		return nil, fmt.Errorf("reading the scopes of the discovery document: %w", err)
+	}
+
+	scopes := DefaultScopes()
+	if slices.Contains(discovery.ScopesSupported, GroupsScope) {
+		scopes = append(scopes, GroupsScope)
+	}
+
+	return scopes, nil
 }
 
 // AuthURL returns the provider's authorization URL for one sign-in: the code
