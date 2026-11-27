@@ -2,8 +2,6 @@
 
 A release starts when someone pushes a tag `v*`. The `Release` workflow (`.github/workflows/release.yml`) builds everything from that tag with [GoReleaser](https://goreleaser.com) and Helm, signs it with [cosign](https://docs.sigstore.dev/cosign/) and records where it came from. Nobody builds or uploads a release by hand.
 
-The first release is part of making the repository public: follow [going-public.md](going-public.md) for it, which comes back to the steps below at the right moment.
-
 ## Cut a release
 
 1. Check that `main` is green and that `docs/design.md` and the README describe what the release does.
@@ -100,10 +98,6 @@ gh attestation verify oci://ghcr.io/rahacloud/charts/wordpress:0.1.0 --repo raha
 
 `gh attestation verify` needs a GitHub login. Without `--bundle-from-oci` it fetches the attestation from the GitHub API. The workflow also pushes each chart's attestation to the registry beside the chart, and `--bundle-from-oci` reads it from there; the chart command above uses it, and it also works without the flag. The archives and the image have their attestations only in the GitHub API, so their commands do not take the flag.
 
-## Before the repository is public
+## After the first release
 
-wpfleet stays private until it has run on a real fleet, and the first tag waits until the repository is public. [going-public.md](going-public.md) is the ordered checklist for that day, from the history scan to the announcement. A tag pushed while the repository is still private would publish a release that differs in three ways:
-
-- GitHub artifact attestations need GitHub Enterprise Cloud on a private repository, so the workflow skips them, and that release never gets provenance.
-- The cosign signatures still go to the public Rekor log, which names the repository and the workflow for anyone who searches it, though not what was built.
-- New packages on ghcr.io are private. An organization owner makes `wpfleet`, `charts/wordpress` and `charts/wpfleet` public in the package settings once, after their first push.
+New packages on ghcr.io are private. After the first release pushes them, an organization owner makes `wpfleet`, `charts/wordpress` and `charts/wpfleet` public in each package's settings, once.
