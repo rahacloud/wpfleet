@@ -132,7 +132,7 @@ func TestFooterIgnoresBranding(t *testing.T) {
 			Brand: ui.Brand{
 				Name: `Northwind <footer>Powered by someone else</footer>`, LogoURL: "/brand/logo?v=1",
 				FaviconURL: "/brand/favicon?v=1", FaviconType: "image/png", ThemeURL: "/brand/theme.css?v=1",
-				SupportURL: "https://help.example.com/", Welcome: "",
+				SupportURL: "https://help.example.com/", Welcome: "", WelcomeLang: l,
 			},
 		}
 

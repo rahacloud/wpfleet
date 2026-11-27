@@ -64,7 +64,16 @@ func TestWelcomeAndSupportFromTheBrand(t *testing.T) {
 	cookie, _ := h.as(editor(), "")
 
 	home := h.request(http.MethodGet, "/", nil, cookie).Body.String()
-	testutil.Contains(t, "welcome", home, `<p class="wf-page-welcome">Open your site&#39;s dashboard from here.</p>`)
+	testutil.Contains(t, "welcome", home,
+		`<p class="wf-page-welcome" lang="en" dir="ltr">Open your site&#39;s dashboard from here.</p>`)
+
+	// On a Persian page without a Persian text, the English one is marked
+	// as English, so a screen reader reads it with the right voice and its
+	// period stays at its end.
+	faCookie, _ := h.as(editor(), "fa")
+	home = h.request(http.MethodGet, "/", nil, faCookie).Body.String()
+	testutil.Contains(t, "English welcome on a Persian page", home, `<html lang="fa" dir="rtl">`,
+		`<p class="wf-page-welcome" lang="en" dir="ltr">Open your site&#39;s dashboard from here.</p>`)
 
 	refusal := h.request(http.MethodGet, "/sites/production/blog", nil, cookie).Body.String()
 	testutil.Contains(t, "refusal", refusal, "ask your support team for access", `href="mailto:web-help@example.com"`)

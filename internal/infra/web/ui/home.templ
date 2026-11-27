@@ -8,7 +8,7 @@ templ HomePage(p Page, v HomeView) {
 	@Layout(p) {
 		<h1>{ p.L.T(i18n.HomeTitle) }</h1>
 		if p.Brand.Welcome != "" {
-			<p class="wf-page-welcome">{ p.Brand.Welcome }</p>
+			<p class="wf-page-welcome" lang={ p.Brand.WelcomeLang.Code() } dir={ p.Brand.WelcomeLang.Dir() }>{ p.Brand.Welcome }</p>
 		}
 		if v.Total == 0 {
 			<section class="wf-card wf-stack wf-page-empty">

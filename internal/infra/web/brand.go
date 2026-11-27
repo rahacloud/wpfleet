@@ -228,6 +228,7 @@ func (a *brandAssets) view(l i18n.Lang) ui.Brand {
 		ThemeURL:    themePath + "?v=" + a.theme.Version,
 		SupportURL:  a.b.SupportURL,
 		Welcome:     a.b.Welcome[l],
+		WelcomeLang: l,
 	}
 
 	if logo != nil {
@@ -239,7 +240,7 @@ func (a *brandAssets) view(l i18n.Lang) ui.Brand {
 	}
 
 	if v.Welcome == "" {
-		v.Welcome = a.b.Welcome[i18n.English]
+		v.Welcome, v.WelcomeLang = a.b.Welcome[i18n.English], i18n.English
 	}
 
 	return v

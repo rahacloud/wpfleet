@@ -59,9 +59,12 @@ type Brand struct {
 	// SupportURL is where "Need help?" leads, an https or mailto URL; empty
 	// shows no link.
 	SupportURL string
-	// Welcome is the home page's short text in the page's language; empty
-	// shows none.
+	// Welcome is the home page's short text in the page's language, or the
+	// English one when that has none; empty shows none.
 	Welcome string
+	// WelcomeLang is the language Welcome is written in, which differs from
+	// the page's when it fell back to English.
+	WelcomeLang i18n.Lang
 }
 
 // Repository is wpfleet's source code, which the footer of every page
