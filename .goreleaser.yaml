@@ -1,13 +1,16 @@
 # GoReleaser configuration — https://goreleaser.com
+# docs/releasing.md says how a release is cut and how to verify what it publishes.
 version: 2
 
 project_name: wpfleet
 
 before:
   hooks:
-    - go mod tidy
     - sh -c 'mkdir -p completions && for s in bash zsh fish; do go run ./cmd/wpfleet completion "$s" > "completions/wpfleet.$s"; done'
 
+# Reproducible: the same commit gives the same binaries, archives and
+# checksums. -trimpath drops the build directory, and every timestamp is the
+# commit's. The -X flags carry no time, so they keep it reproducible.
 builds:
   - id: wpfleet
     main: ./cmd/wpfleet
@@ -16,12 +19,15 @@ builds:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
+    flags:
+      - -trimpath
     # Stamped the way the image is, so a release and its image print the
     # same --version; the version package prefers these over the build info.
     ldflags:
       - -s -w
       - -X github.com/rahacloud/wpfleet/internal/infra/version.version=v{{ .Version }}
       - -X github.com/rahacloud/wpfleet/internal/infra/version.commit={{ .ShortCommit }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:
   - id: default
@@ -31,13 +37,80 @@ archives:
     format_overrides:
       - goos: windows
         formats: [zip]
+    builds_info:
+      mtime: "{{ .CommitDate }}"
     files:
-      - README.md
-      - LICENSE
-      - completions/*
+      - src: README.md
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: LICENSE
+        info:
+          mtime: "{{ .CommitDate }}"
+      - src: completions/*
+        info:
+          mtime: "{{ .CommitDate }}"
 
 checksum:
   name_template: checksums.txt
+
+# One SPDX document per archive, made by syft.
+sboms:
+  - artifacts: archive
+
+# Keyless: cosign gets a short-lived certificate for the release workflow's
+# GitHub OIDC identity, so there is no key to keep. Signing checksums.txt
+# covers every archive and SBOM listed in it.
+signs:
+  - cmd: cosign
+    signature: "${artifact}.sigstore.json"
+    args:
+      - sign-blob
+      - "--bundle=${signature}"
+      - "${artifact}"
+      - --yes
+    artifacts: checksum
+
+dockers_v2:
+  - id: wpfleet
+    ids: [wpfleet]
+    dockerfile: build/package/Dockerfile.release
+    images:
+      - ghcr.io/rahacloud/wpfleet
+    tags:
+      - "{{ .Version }}"
+      - "{{ if not .Prerelease }}latest{{ end }}"
+    platforms:
+      - linux/amd64
+      - linux/arm64
+    labels:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: Manage a fleet of WordPress sites on Kubernetes.
+      org.opencontainers.image.source: https://github.com/rahacloud/wpfleet
+      org.opencontainers.image.url: https://github.com/rahacloud/wpfleet
+      org.opencontainers.image.licenses: Apache-2.0
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+    annotations:
+      org.opencontainers.image.title: "{{ .ProjectName }}"
+      org.opencontainers.image.description: Manage a fleet of WordPress sites on Kubernetes.
+      org.opencontainers.image.source: https://github.com/rahacloud/wpfleet
+      org.opencontainers.image.licenses: Apache-2.0
+      org.opencontainers.image.version: "{{ .Version }}"
+      org.opencontainers.image.revision: "{{ .FullCommit }}"
+      org.opencontainers.image.created: "{{ .CommitDate }}"
+
+# Signs each image by its digest, never by a tag that can move.
+docker_signs:
+  - cmd: cosign
+    args:
+      - sign
+      - "${artifact}@${digest}"
+      - --yes
+    output: true
+
+metadata:
+  mod_timestamp: "{{ .CommitTimestamp }}"
 
 changelog:
   sort: asc
@@ -48,7 +121,28 @@ changelog:
       - "^test:"
       - "^chore:"
       - "^ci:"
+      - "^Merge "
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Security
+      regexp: '^.*?sec(\(.+\))??!?:.+$'
+      order: 2
+    - title: Performance
+      regexp: '^.*?perf(\(.+\))??!?:.+$'
+      order: 3
+    - title: Dependencies
+      regexp: '^.*?(build|chore|ci)\(deps\)!?:.+$'
+      order: 4
+    - title: Other changes
+      order: 999
 
 release:
   draft: false
   prerelease: auto
+  footer: |
+    The binaries, the image `ghcr.io/rahacloud/wpfleet:{{ .Version }}` and the Helm charts in `oci://ghcr.io/rahacloud/charts` are signed with cosign and carry build provenance. [docs/releasing.md](https://github.com/rahacloud/wpfleet/blob/{{ .Tag }}/docs/releasing.md) says how to verify them.

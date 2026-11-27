@@ -4,7 +4,37 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # A week's wait lets a hijacked or broken release be yanked before it
+    # reaches a pull request.
+    cooldown:
+      default-days: 7
+    groups:
+      gomod:
+        patterns: ["*"]
+    commit-message:
+      prefix: build(deps)
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci(deps)
+
+  # The server image and the release image (build/package/Dockerfile*).
+  - package-ecosystem: docker
+    directory: /build/package
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      docker:
+        patterns: ["*"]
+    commit-message:
+      prefix: build(deps)

@@ -24,7 +24,8 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 # Static, with CA certificates and time zones, no shell; the nonroot user is
 # 65532, which the chart's securityContext names.
-FROM gcr.io/distroless/static-debian13:nonroot
+# The same digest as Dockerfile.release; dependabot moves both.
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:8ce6dd87e9823c5b48dcfb2c8604714ccb351ce59607327bcc4957448da279b5
 COPY --from=build /out/wpfleet /usr/local/bin/wpfleet
 USER 65532:65532
 EXPOSE 8080 9090
