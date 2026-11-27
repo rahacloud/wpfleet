@@ -126,13 +126,16 @@ func TestCommandsRegistered(t *testing.T) {
 	testutil.Contains(t, "backup commands", out, "run", "list", "restore")
 }
 
+// helpName is the name of the root's help command.
+const helpName = "help"
+
 // commandPaths lists every command below root as the names from the root
 // down, the help command left out.
 func commandPaths(c *cli.Command, prefix []string) [][]string {
 	var paths [][]string
 
 	for _, sub := range c.Commands {
-		if sub.Name == "help" {
+		if sub.Name == helpName {
 			continue
 		}
 
@@ -168,7 +171,7 @@ func TestHelpOfEveryCommand(t *testing.T) {
 		asks := [][]string{
 			append(slices.Clone(path), "--help"),
 			append(slices.Clone(path), "-h"),
-			append([]string{"help"}, path...),
+			append([]string{helpName}, path...),
 		}
 		if len(command.Commands) == 0 {
 			asks = append(asks, append(slices.Clone(path), "blog", "shop", "--help"))
@@ -184,10 +187,24 @@ func TestHelpOfEveryCommand(t *testing.T) {
 	}
 }
 
+// The help command is listed in the root's help, so asking for its own help
+// describes it rather than calling it unknown.
+func TestHelpOfHelp(t *testing.T) {
+	t.Parallel()
+
+	for _, args := range [][]string{{helpName, helpName}, {helpName, "h"}, {"h", helpName}} {
+		code, out, errOut := run(t, nil, args...)
+		what := strings.Join(args, " ")
+		testutil.Equal(t, what+" exit code", code, 0)
+		testutil.Equal(t, what+" stderr", errOut, "")
+		testutil.True(t, what+" describes help, got:\n"+out, strings.HasPrefix(out, "NAME:\n   wpfleet help - "))
+	}
+}
+
 func TestHelpOfAnUnknownCommand(t *testing.T) {
 	t.Parallel()
 
-	code, _, errOut := run(t, nil, "help", "backup", "nope")
+	code, _, errOut := run(t, nil, helpName, "backup", "nope")
 	testutil.Equal(t, "exit code", code, 3)
 	testutil.Equal(t, "stderr", errOut, "wpfleet: No help topic for 'backup nope'\n")
 

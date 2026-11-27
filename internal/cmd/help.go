@@ -51,13 +51,14 @@ func showOwnHelp(_ context.Context, c *cli.Command, _ string) {
 }
 
 // helpAction prints the help of the command its arguments name, from the
-// root down, or of the root without arguments.
+// root down, or of the root without arguments. "help help" describes the
+// help command itself, as urfave/cli's own help command does.
 func helpAction(_ context.Context, help *cli.Command) error {
 	target := help.Root()
 
 	for _, name := range help.Args().Slice() {
 		next := target.Command(name)
-		if next == nil || next == help {
+		if next == nil {
 			path := strings.Join(append(target.Path()[1:], name), " ")
 
 			//nolint:wrapcheck // the exit code is the point; Run prints the message as it is
