@@ -32,6 +32,10 @@ type Branding struct {
 	// repository, read from Dir; empty Logo shows the name alone and empty
 	// Favicon wpfleet's own.
 	Logo, Favicon string
+	// LogoIncludesName says the logo is a wordmark that shows the name, so
+	// the header keeps the name for screen readers only. Without a logo
+	// that can be shown, the name shows as usual.
+	LogoIncludesName bool
 	// Dir is the fleet directory the image paths are read from, the newest
 	// snapshot of the clone; nil reads no image.
 	Dir func() string
@@ -221,18 +225,20 @@ func (a *brandAssets) view(l i18n.Lang) ui.Brand {
 	logo, favicon := a.images()
 
 	v := ui.Brand{
-		Name:        a.b.Name,
-		LogoURL:     "",
-		FaviconURL:  faviconPath + "?v=" + favicon.Version,
-		FaviconType: string(favicon.Type),
-		ThemeURL:    themePath + "?v=" + a.theme.Version,
-		SupportURL:  a.b.SupportURL,
-		Welcome:     a.b.Welcome[l],
-		WelcomeLang: l,
+		Name:             a.b.Name,
+		LogoURL:          "",
+		LogoIncludesName: false,
+		FaviconURL:       faviconPath + "?v=" + favicon.Version,
+		FaviconType:      string(favicon.Type),
+		ThemeURL:         themePath + "?v=" + a.theme.Version,
+		SupportURL:       a.b.SupportURL,
+		Welcome:          a.b.Welcome[l],
+		WelcomeLang:      l,
 	}
 
 	if logo != nil {
 		v.LogoURL = logoPath + "?v=" + logo.Version
+		v.LogoIncludesName = a.b.LogoIncludesName
 	}
 
 	if v.SupportURL == "" && a.b.SupportEmail != "" {

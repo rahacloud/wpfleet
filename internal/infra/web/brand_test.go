@@ -19,10 +19,14 @@ import (
 // svgPolicy is the Content-Security-Policy of an SVG brand image.
 const svgPolicy = "default-src 'none'; style-src 'unsafe-inline'"
 
+// brokenLogo is a file of testdata/northwind that is not the PNG its name
+// says.
+const brokenLogo = "brand/not-a-logo.png"
+
 // northwind is the invented brand of testdata/northwind, read from dir.
 func northwind(dir string) web.Branding {
 	return web.Branding{
-		Name: "Northwind Media", Logo: "brand/logo.svg", Favicon: "brand/favicon.png",
+		Name: "Northwind Media", Logo: "brand/logo.svg", LogoIncludesName: false, Favicon: "brand/favicon.png",
 		Dir: func() string { return dir }, PrimaryColor: "#0e7c66",
 		SupportURL: "", SupportEmail: "web-help@example.com",
 		Welcome: map[i18n.Lang]string{i18n.English: "Open your site's dashboard from here.", i18n.Persian: ""},
@@ -188,6 +192,48 @@ func TestHeader(t *testing.T) {
 		`<span class="wf-brand-name">wpfleet</span>`, `type="image/svg+xml"`)
 }
 
+// A wordmark logo shows the name already: the header leaves out the name
+// beside it on every page, the sign-in page included, and keeps it for
+// screen readers. When the logo cannot be shown, the name shows again.
+func TestWordmarkLogo(t *testing.T) {
+	t.Parallel()
+
+	dir := fleetWithBrand(t)
+	h := newHarnessWith(t, func(d *web.Deps) {
+		b := northwind(dir)
+		b.LogoIncludesName = true
+		d.Branding = b
+	})
+
+	const hidden = `<span class="wf-visually-hidden">Northwind Media</span>`
+
+	signIn := h.request(http.MethodGet, "/auth/signin", nil, nil).Body.String()
+	cookie, _ := h.as(editor(), "")
+	home := h.request(http.MethodGet, "/", nil, cookie).Body.String()
+	refusal := h.request(http.MethodGet, "/sites/production/blog", nil, cookie).Body.String()
+
+	for what, body := range map[string]string{"sign-in": signIn, "home": home, "refusal": refusal} {
+		testutil.Contains(t, what+": the logo alone", body, `<img class="wf-brand-logo" src="/brand/logo?v=`, hidden)
+		testutil.NotContains(t, what+": no visible name beside it", body, "wf-brand-name")
+		testutil.Contains(t, what+": the title keeps the name", body, " · Northwind Media</title>")
+	}
+
+	broken := newHarnessWith(t, func(d *web.Deps) {
+		b := northwind(dir)
+		b.Logo = brokenLogo
+		b.LogoIncludesName = true
+		d.Branding = b
+	})
+	body := broken.request(http.MethodGet, "/auth/signin", nil, nil).Body.String()
+	testutil.Contains(t, "the name shows without the logo", body, `<span class="wf-brand-name">Northwind Media</span>`)
+	testutil.NotContains(t, "nothing hidden", body, hidden)
+
+	// Without the flag, the name stands beside the logo as before.
+	plain, _ := brandHarness(t)
+	body = plain.request(http.MethodGet, "/auth/signin", nil, nil).Body.String()
+	testutil.Contains(t, "the name beside the logo", body, `<span class="wf-brand-name">Northwind Media</span>`)
+}
+
 func TestServeLogo(t *testing.T) {
 	t.Parallel()
 
@@ -255,7 +301,7 @@ func TestBrokenLogoIsLeftOut(t *testing.T) {
 	dir := fleetWithBrand(t)
 	h := newHarnessWith(t, func(d *web.Deps) {
 		b := northwind(dir)
-		b.Logo = "brand/not-a-logo.png"
+		b.Logo = brokenLogo
 		b.Favicon = "brand/missing.png"
 		d.Branding = b
 	})

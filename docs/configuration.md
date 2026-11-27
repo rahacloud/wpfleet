@@ -151,6 +151,7 @@ The UI is meant for the people who run the sites' content, so it carries your or
 | --- | --- | --- | --- |
 | `server.branding.name` | string | `wpfleet` | The name in the header, the browser's title and the sign-in page ("Welcome to <name>"). It cannot be blank. |
 | `server.branding.logo` | string | `""` | The logo in the header and on the sign-in page: a PNG, SVG or WebP file of at most 512 KiB, as a relative path inside the fleet repository (`brand/logo.svg`). Empty shows the name alone. |
+| `server.branding.logoIncludesName` | bool | `false` | Set it when the logo is a wordmark that already shows the name: the header then shows the logo alone, on every page the sign-in page included, instead of printing the name a second time beside it. Screen readers still read the name, and the browser's title and the sign-in heading keep it. It needs a logo; when the logo cannot be shown after a push, the name shows again. |
 | `server.branding.favicon` | string | `""` | The browser tab's icon, with the logo's rules. Empty uses wpfleet's own. |
 | `server.branding.primaryColor` | string | `#1f5fbf` | The color of buttons and links, as `#rgb` or `#rrggbb`. The text on a button is black or white, whichever reads better, and a color too light or too dark for the light or the dark theme is adjusted just enough to stay readable (WCAG AA). |
 | `server.branding.supportURL` | string | `""` | Where "Need help?" in the header leads, and the support link on the empty home page, on refusals, on error pages and under a failed action. An absolute `http` or `https` URL. |

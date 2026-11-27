@@ -276,6 +276,7 @@ func TestBrandingDefaults(t *testing.T) {
 	testutil.Equal(t, "color", b.PrimaryColor, "#1f5fbf")
 	testutil.Equal(t, "no logo", b.Logo, "")
 	testutil.Equal(t, "no favicon", b.Favicon, "")
+	testutil.Equal(t, "the name beside the logo", b.LogoIncludesName, false)
 	testutil.Equal(t, "no welcome", b.Welcome, config.Welcome{EN: "", FA: ""})
 }
 
@@ -285,6 +286,7 @@ func TestLoadBranding(t *testing.T) {
 	const branding = `  branding:
     name: Northwind Media
     logo: brand/northwind.svg
+    logoIncludesName: true
     favicon: brand/favicon.png
     primaryColor: "#0E7C66"
     supportURL: https://help.example.com/wordpress
@@ -301,8 +303,9 @@ func TestLoadBranding(t *testing.T) {
 	testutil.NoError(t, cfg.ValidateServer())
 
 	testutil.DeepEqual(t, "branding", cfg.Server.Branding, config.Branding{
-		Name: "Northwind Media", Logo: "brand/northwind.svg", Favicon: "brand/favicon.png", PrimaryColor: "#123",
-		SupportURL: "https://help.example.com/wordpress", SupportEmail: "web-help@example.com",
+		Name: "Northwind Media", Logo: "brand/northwind.svg", LogoIncludesName: true, Favicon: "brand/favicon.png",
+		PrimaryColor: "#123",
+		SupportURL:   "https://help.example.com/wordpress", SupportEmail: "web-help@example.com",
 		Welcome: config.Welcome{EN: "Open your site's dashboard from here.", FA: "داشبورد سایت خود را از اینجا باز کنید."},
 	})
 }
@@ -315,17 +318,18 @@ func TestValidateBranding(t *testing.T) {
 	long := strings.Repeat("a", config.MaxWelcomeLength+1)
 
 	tests := map[string]string{
-		"server.branding.name is empty":          `server: {branding: {name: " "}}`,
-		"logo must be a relative path":           `server: {branding: {logo: /etc/passwd.png}}`,
-		"inside the fleet repository, not \"../": `server: {branding: {logo: ../other/logo.svg}}`,
-		"favicon must be a relative path":        `server: {branding: {favicon: 'brand\x5clogo.png'}}`,
-		"logo must be a .png, .svg or .webp":     `server: {branding: {logo: brand/logo.gif}}`,
-		"favicon must be a .png, .svg or .webp":  `server: {branding: {favicon: favicon.ico}}`,
-		"primaryColor is not a CSS hex color":    `server: {branding: {primaryColor: blue}}`,
-		"supportURL must be an absolute":         `server: {branding: {supportURL: help.example.com}}`,
-		"supportEmail must be a plain address":   `server: {branding: {supportEmail: "Help <help@example.com>"}}`,
-		"supportEmail must be a plain":           `server: {branding: {supportEmail: not-an-address}}`,
-		"welcome.fa has 501 characters":          `server: {branding: {welcome: {fa: ` + long + `}}}`,
+		"server.branding.name is empty":                 `server: {branding: {name: " "}}`,
+		"logo must be a relative path":                  `server: {branding: {logo: /etc/passwd.png}}`,
+		"inside the fleet repository, not \"../":        `server: {branding: {logo: ../other/logo.svg}}`,
+		"favicon must be a relative path":               `server: {branding: {favicon: 'brand\x5clogo.png'}}`,
+		"logo must be a .png, .svg or .webp":            `server: {branding: {logo: brand/logo.gif}}`,
+		"favicon must be a .png, .svg or .webp":         `server: {branding: {favicon: favicon.ico}}`,
+		"logoIncludesName is true but there is no logo": `server: {branding: {logoIncludesName: true}}`,
+		"primaryColor is not a CSS hex color":           `server: {branding: {primaryColor: blue}}`,
+		"supportURL must be an absolute":                `server: {branding: {supportURL: help.example.com}}`,
+		"supportEmail must be a plain address":          `server: {branding: {supportEmail: "Help <help@example.com>"}}`,
+		"supportEmail must be a plain":                  `server: {branding: {supportEmail: not-an-address}}`,
+		"welcome.fa has 501 characters":                 `server: {branding: {welcome: {fa: ` + long + `}}}`,
 	}
 
 	for want, content := range tests {

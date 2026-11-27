@@ -76,6 +76,10 @@ type Branding struct {
 	// Logo is a PNG, SVG or WebP file of at most 512 KiB, as a path inside
 	// the fleet repository; empty shows the name alone.
 	Logo string `json:"logo" koanf:"logo"`
+	// LogoIncludesName says the logo is a wordmark that already shows the
+	// name, so the header leaves out the name beside it and keeps it for
+	// screen readers only. It needs a logo.
+	LogoIncludesName bool `json:"logoIncludesName" koanf:"logoIncludesName"`
 	// Favicon follows the logo's rules; empty uses wpfleet's own.
 	Favicon string `json:"favicon" koanf:"favicon"`
 	// PrimaryColor is a CSS hex color for buttons and links; the text on it
@@ -190,7 +194,7 @@ func DefaultServer() Server {
 		Admin:   Admin{MatchEmail: true},
 		Access:  nil,
 		Branding: Branding{
-			Name: brand.DefaultName, Logo: "", Favicon: "", PrimaryColor: brand.DefaultPrimaryColor,
+			Name: brand.DefaultName, Logo: "", LogoIncludesName: false, Favicon: "", PrimaryColor: brand.DefaultPrimaryColor,
 			SupportURL: "", SupportEmail: "", Welcome: Welcome{EN: "", FA: ""},
 		},
 	}
@@ -223,10 +227,10 @@ func (s Server) validate(envs map[string]bool) []error {
 }
 
 // validate checks the branding: a name, image paths that stay inside the
-// fleet repository and name an allowed type, a hex color, an absolute
-// support URL, a plain email address and short welcome texts. That the
-// image files exist and match their type is checked by serve, which has
-// the repository.
+// fleet repository and name an allowed type, a logo when the name is said
+// to be in it, a hex color, an absolute support URL, a plain email address
+// and short welcome texts. That the image files exist and match their type
+// is checked by serve, which has the repository.
 func (b Branding) validate() []error {
 	var errs []error
 
@@ -236,6 +240,12 @@ func (b Branding) validate() []error {
 	}
 
 	errs = append(errs, checkBrandImage("server.branding.logo", b.Logo)...)
+
+	if b.LogoIncludesName && b.Logo == "" {
+		errs = append(errs, fmt.Errorf("%w: server.branding.logoIncludesName is true but there is no logo, "+
+			"so the name would show nowhere in the header", ErrInvalid))
+	}
+
 	errs = append(errs, checkBrandImage("server.branding.favicon", b.Favicon)...)
 
 	_, err := brand.ParseColor(b.PrimaryColor)

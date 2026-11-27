@@ -40,14 +40,20 @@ templ Layout(p Page) {
 
 // header shows the brand, and for a signed-in person their name, the
 // language switch and sign-out; before sign-in it shows links to the page
-// in the other languages.
+// in the other languages. A logo that already shows the name (a wordmark)
+// stands alone, with the name kept for screen readers, so it is not read
+// or seen twice.
 templ header(p Page) {
 	<header class="wf-header">
 		<a class="wf-brand" href="/">
 			if p.Brand.LogoURL != "" {
 				<img class="wf-brand-logo" src={ p.Brand.LogoURL } alt=""/>
 			}
-			<span class="wf-brand-name">{ p.Brand.Name }</span>
+			if p.Brand.LogoURL != "" && p.Brand.LogoIncludesName {
+				<span class="wf-visually-hidden">{ p.Brand.Name }</span>
+			} else {
+				<span class="wf-brand-name">{ p.Brand.Name }</span>
+			}
 		</a>
 		<nav class="wf-header-nav" aria-label={ p.L.T(i18n.AccountMenu) }>
 			if p.Brand.SupportURL != "" {

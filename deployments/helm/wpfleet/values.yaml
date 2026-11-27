@@ -82,6 +82,10 @@ config:
       # repository, so a push changes them. Empty logo: the name alone;
       # empty favicon: wpfleet's own.
       logo: ""
+      # true when the logo is a wordmark that already shows the name: the
+      # header then shows the logo alone, keeping the name for screen
+      # readers. It needs a logo.
+      logoIncludesName: false
       favicon: ""
       # Buttons and links; the text on them is chosen to stay readable.
       primaryColor: "#1f5fbf"
