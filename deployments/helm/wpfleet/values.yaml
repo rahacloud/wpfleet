@@ -1,0 +1,187 @@
+# wpfleet serve runs as one Deployment inside the cluster whose site
+# namespaces it manages. It is the most powerful thing in those namespaces:
+# it can deploy every site and log in to every site's admin.
+
+image:
+  # Built from build/package/Dockerfile (`just image`). No image is published
+  # yet: push one to a registry the cluster can pull from and set it here.
+  repository: ghcr.io/rahacloud/wpfleet
+  # Empty uses the chart's appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# The container's arguments. The configuration file is the ConfigMap below,
+# mounted at /etc/wpfleet/wpfleet.yaml; the clone of the fleet repository
+# lives on an emptyDir at /var/lib/wpfleet/fleet and is cloned again at
+# every start.
+args:
+  - serve
+  - --config
+  - /etc/wpfleet/wpfleet.yaml
+  - --clone
+  - /var/lib/wpfleet/fleet
+
+# wpfleet.yaml for the server, as YAML: the environments and the server
+# section of docs/design.md. server.listen and server.metricsListen are set
+# from ports below and need not be given. Secrets never go here; they come
+# from existingSecret.
+config:
+  environments: []
+  #  - name: staging
+  #    namespace: wp-staging
+  #  - name: production
+  #    namespace: wp-production
+  #    promoteFrom: staging
+  server:
+    publicURL: https://wpfleet.example.com
+    git:
+      url: git@git.example.com:example/fleet.git
+      branch: main
+      pollInterval: 1m
+      committer:
+        name: wpfleet
+        email: wpfleet@example.com
+    oidc:
+      issuer: https://sso.example.com/realms/main
+      clientID: wpfleet
+      groupsClaim: groups
+    session:
+      maxAge: 8h
+    admin:
+      matchEmail: true
+    # Access is denied unless a rule allows it.
+    access: []
+    #  - group: platform
+    #    environments: ["*"]
+    #    sites: ["*"]
+    #    allow: [view, deploy, login, backup, restore]
+
+# The Secret, made by hand in the release's namespace, that holds the
+# server's secrets. Each key is the environment variable it becomes; a
+# missing key leaves the variable unset:
+#   WPFLEET_SESSION_KEY            required: openssl rand -base64 32
+#   WPFLEET_OIDC_CLIENT_SECRET     the OIDC client's secret
+#   WPFLEET_GIT_TOKEN              an HTTPS token, when git.url is HTTPS
+#   WPFLEET_GIT_WEBHOOK_SECRET     signs POST /hooks/git; without it webhooks are refused
+#   WPFLEET_S3_ACCESS_KEY_ID       read the backups for the backup list and restore
+#   WPFLEET_S3_SECRET_ACCESS_KEY
+existingSecret: ""
+
+git:
+  # A deploy key for an SSH git.url, read from existingSecret and mounted as
+  # a file; WPFLEET_GIT_SSH_KEY points at it.
+  sshKey:
+    enabled: false
+    # The Secret key holding the private key (OpenSSH or PEM, no passphrase).
+    secretKey: ssh-privatekey
+    # The Secret key holding the Git host's known_hosts lines
+    # (ssh-keyscan git.example.com); SSH_KNOWN_HOSTS points at it. Host keys
+    # are always checked, so an SSH clone without it fails.
+    knownHostsKey: known_hosts
+
+# The namespaces of the fleet's environments. Each gets a Role and a
+# RoleBinding for the server's ServiceAccount: a tenant often holds only
+# namespace admin and cannot make a ClusterRole. An environment with an
+# empty kubeconfig then uses the pod's ServiceAccount.
+siteNamespaces: []
+
+rbac:
+  create: true
+  # Rules added to every site namespace's Role, beyond what Helm and the
+  # operations touch there (Secrets, ConfigMaps, Services,
+  # PersistentVolumeClaims, Deployments, Ingresses, CronJobs, Jobs, Pods with
+  # exec and log, and Events). A fleet whose own chart makes other kinds
+  # needs them here.
+  extraRules: []
+
+serviceAccount:
+  create: true
+  # Empty uses the release's full name.
+  name: ""
+  annotations: {}
+
+ports:
+  # The UI, the webhook, /healthz and /readyz (server.listen).
+  http: 8080
+  # /metrics, kept off the public listener (server.metricsListen).
+  metrics: 9090
+
+service:
+  type: ClusterIP
+  port: 80
+  # Exposes /metrics on the Service for a scraper; it is never on the
+  # Ingress.
+  metrics: true
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  # Empty takes the host of config.server.publicURL.
+  host: ""
+  tls:
+    enabled: true
+    # The certificate's Secret; made by hand or by cert-manager through an
+    # annotation above.
+    secretName: ""
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+# The clone, wp-cli's cache and temporary files live on emptyDirs, since the
+# root filesystem is read-only.
+storage:
+  cloneSizeLimit: 1Gi
+  cacheSizeLimit: 256Mi
+  tmpSizeLimit: 256Mi
+
+podSecurityContext:
+  runAsNonRoot: true
+  # The distroless nonroot user.
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 10
+  failureThreshold: 3
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: http
+  periodSeconds: 5
+  failureThreshold: 3
+# The first clone of a large fleet can take a while.
+startupProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 5
+  failureThreshold: 60
+
+# More environment variables for the container.
+extraEnv: []
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

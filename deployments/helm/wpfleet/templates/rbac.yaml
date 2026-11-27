@@ -1,0 +1,57 @@
+{{- if .Values.rbac.create }}
+{{- range $namespace := .Values.siteNamespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "wpfleet.fullname" $ }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "wpfleet.labels" $ | nindent 4 }}
+rules:
+  # What Helm installs and upgrades for a site, and what the operations read.
+  - apiGroups: [""]
+    resources: [secrets, configmaps, services, persistentvolumeclaims, pods]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch, create, update, patch, delete]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingresses]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # The backup CronJob, the Jobs started from it, and restore Jobs.
+  - apiGroups: [batch]
+    resources: [cronjobs, jobs]
+    verbs: [get, list, watch, create, update, patch, delete]
+  # wp-cli runs in the site's pod; Job logs are followed.
+  - apiGroups: [""]
+    resources: [pods/exec]
+    verbs: [create, get]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+  # An Event on the site's Deployment for deploy, login, backup and restore.
+  - apiGroups: ["", events.k8s.io]
+    resources: [events]
+    verbs: [get, list, watch, create, patch]
+  {{- with $.Values.rbac.extraRules }}
+  {{- toYaml . | nindent 2 }}
+  {{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "wpfleet.fullname" $ }}
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "wpfleet.labels" $ | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "wpfleet.fullname" $ }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "wpfleet.serviceAccountName" $ }}
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
+{{- end }}

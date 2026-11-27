@@ -40,6 +40,7 @@ The pictures come from a demo fleet of three invented sites on a local kind clus
 just build    # ./wpfleet
 just test
 just lint     # golangci-lint and helm lint
+just image    # the server image, wpfleet:dev
 ```
 
 ## License

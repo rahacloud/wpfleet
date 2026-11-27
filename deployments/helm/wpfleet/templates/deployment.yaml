@@ -1,0 +1,146 @@
+{{- $secret := required "existingSecret is required: the Secret with WPFLEET_SESSION_KEY and the other server secrets" .Values.existingSecret }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "wpfleet.fullname" . }}
+  labels:
+    {{- include "wpfleet.labels" . | nindent 4 }}
+spec:
+  # Pushes and the per-site locks are in memory: one replica, and never two
+  # at once during a rollout.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "wpfleet.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "wpfleet.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include "wpfleet.config" . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "wpfleet.serviceAccountName" . }}
+      automountServiceAccountToken: true
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: wpfleet
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            {{- toYaml .Values.args | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ports.http }}
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.ports.metrics }}
+              protocol: TCP
+          env:
+            - name: XDG_CACHE_HOME
+              value: /var/cache/wpfleet
+            - name: HOME
+              value: /tmp
+            - name: WPFLEET_SESSION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: WPFLEET_SESSION_KEY
+            {{- range list "WPFLEET_OIDC_CLIENT_SECRET" "WPFLEET_GIT_TOKEN" "WPFLEET_GIT_WEBHOOK_SECRET" "WPFLEET_S3_ACCESS_KEY_ID" "WPFLEET_S3_SECRET_ACCESS_KEY" }}
+            - name: {{ . }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secret }}
+                  key: {{ . }}
+                  optional: true
+            {{- end }}
+            {{- if .Values.git.sshKey.enabled }}
+            - name: WPFLEET_GIT_SSH_KEY
+              value: /etc/wpfleet/git/{{ .Values.git.sshKey.secretKey }}
+            - name: SSH_KNOWN_HOSTS
+              value: /etc/wpfleet/git/{{ .Values.git.sshKey.knownHostsKey }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/wpfleet/wpfleet.yaml
+              subPath: wpfleet.yaml
+              readOnly: true
+            - name: clone
+              mountPath: /var/lib/wpfleet
+            - name: cache
+              mountPath: /var/cache/wpfleet
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.git.sshKey.enabled }}
+            - name: git-ssh
+              mountPath: /etc/wpfleet/git
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "wpfleet.fullname" . }}
+        - name: clone
+          emptyDir:
+            sizeLimit: {{ .Values.storage.cloneSizeLimit }}
+        - name: cache
+          emptyDir:
+            sizeLimit: {{ .Values.storage.cacheSizeLimit }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ .Values.storage.tmpSizeLimit }}
+        {{- if .Values.git.sshKey.enabled }}
+        - name: git-ssh
+          secret:
+            secretName: {{ $secret }}
+            # Readable by the pod's fsGroup only; the files belong to root.
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.git.sshKey.secretKey }}
+                path: {{ .Values.git.sshKey.secretKey }}
+              - key: {{ .Values.git.sshKey.knownHostsKey }}
+                path: {{ .Values.git.sshKey.knownHostsKey }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
