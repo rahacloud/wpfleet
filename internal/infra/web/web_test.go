@@ -307,6 +307,9 @@ func TestButtonsFollowPermissions(t *testing.T) {
 	page := h.request(http.MethodGet, "/sites/staging/blog", nil, cookie).Body.String()
 
 	testutil.Contains(t, "editor page", page, `data-action="login"`, "Open admin", "blog.staging.example.com")
+	// The page cannot know whether the site has a WordPress user with the
+	// person's email, so it never promises their own account.
+	testutil.NotContains(t, "no promise of the person's account", page, "as yourself")
 
 	hidden := []string{
 		`data-action="deploy"`, `data-action="promote"`, `data-action="backup"`, "Publish ", "Technical details",
@@ -322,7 +325,7 @@ func TestButtonsFollowPermissions(t *testing.T) {
 	testutil.Contains(t, "platform page", page,
 		`data-action="login"`, `data-action="deploy"`, `data-action="backup"`, `data-action="promote"`,
 		"Publish development to staging", "Technical details", "01234567", "/sites/staging/blog/diff",
-		"/sites/staging/blog/restore", "Sign in to the WordPress dashboard as yourself")
+		"/sites/staging/blog/restore", "Sign in to the WordPress dashboard without a password.")
 }
 
 func TestRestoreFormNeedsRestore(t *testing.T) {
