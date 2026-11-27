@@ -13,19 +13,21 @@ You need:
 - Go, at the version in `go.mod`.
 - [just](https://github.com/casey/just), which runs the recipes in the `justfile`.
 - [golangci-lint](https://golangci-lint.run) v2 and [Helm](https://helm.sh) v3 or later, for `just lint`.
-- PHP 8 on the `PATH`, for the tests of the one-time login plugin and the host fix-up. Without PHP those tests skip, so CI still runs them.
+- PHP 8 on the `PATH`, for the tests of the one-time login plugin and the host fix-up. Without PHP those tests skip locally; CI has PHP and runs them.
+- Docker, only for `just image` and `just release-snapshot`.
 
 Then:
 
 ```bash
 just build    # builds ./wpfleet
 just test     # every test, with the race detector and coverage
-just lint     # golangci-lint and helm lint of the embedded chart
+just lint     # golangci-lint and helm lint of both charts
+just generate # the templ components of the web UI, after a .templ change
 ```
 
 Run `just` alone to list every recipe. Run `just lint` and `just test` before you open a pull request; CI runs the same checks, and `go mod tidy` must leave `go.mod` and `go.sum` unchanged.
 
-To try a command against a real cluster, a local [kind](https://kind.sigs.k8s.io) cluster is enough for `sites`, `deploy`, `diff`, `promote` and `admin`. Use an invented fleet with sites like `blog` and `shop` on `example.com`.
+To try a command against a real cluster, a local [kind](https://kind.sigs.k8s.io) cluster is enough for `sites`, `deploy`, `diff`, `promote` and `admin`, and for `serve` from its chart with any OpenID Connect provider, such as [Dex](https://dexidp.io). Use an invented fleet with sites like `blog` and `shop` on `example.com`.
 
 ## How the code is laid out
 
@@ -36,7 +38,9 @@ wpfleet follows the [standard Go project layout](https://github.com/golang-stand
 - `internal/ops` holds the operations that the CLI and the server share.
 - `internal/infra` talks to the world: Kubernetes, Helm, Git, S3, Docker.
 - `internal/domain` holds the types and the rules, with no I/O.
+- `internal/infra/web` is the server's web UI: [templ](https://templ.guide) components and htmx, with every visible text in the English and Persian catalogue in `ui/i18n`.
 - `charts/wordpress` is the site chart, embedded in the binary.
+- `deployments/helm/wpfleet` is the chart that runs `wpfleet serve`, and `build/package` holds the Dockerfiles of its image.
 
 `internal/domain` imports nothing else from this module. `internal/infra` may import domain, `internal/ops` may import domain and infra, and `internal/cmd` imports ops. [docs/design.md](docs/design.md) has the full contract.
 
@@ -46,6 +50,7 @@ wpfleet follows the [standard Go project layout](https://github.com/golang-stand
 - **Write tests.** Packages are tested against fakes (client-go's fake clientset, Helm's in-memory storage, a fake S3), so `just test` needs no cluster.
 - **Keep golangci-lint green.** The configuration turns on nearly every linter (`default: all`); fix the finding rather than adding a `//nolint`, and when a `//nolint` is right, give the reason on the same line.
 - **Use the libraries the code already uses:** urfave/cli v3 for commands, koanf v2 for configuration, `log/slog` for logs. Use real types and generics where a type fits, not `any`.
+- **Commit the generated templ code.** Edit the `.templ` files, run `just generate`, and commit both; CI fails when the generated Go does not match. A new visible text needs its English and its Persian in the catalogue.
 - **A chart change is a wpfleet change.** Keep `helm lint` green and document every value in `charts/wordpress/values.yaml`.
 - **Never print a secret.** Commands never print database passwords, salts or S3 keys from site files, in output, logs or errors.
 - **No real data.** Never commit a real organisation's name, host, address, registry, credential or data, in code, tests, fixtures, docs or commit messages. Use `example.com`, `registry.example.com` and sites like `blog` and `shop`.

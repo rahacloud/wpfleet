@@ -4,3 +4,13 @@ description: One WordPress site, installed once per site per environment by wpfl
 type: application
 version: 0.1.0
 appVersion: "7.0.2"
+home: https://github.com/rahacloud/wpfleet
+sources:
+  - https://github.com/rahacloud/wpfleet
+icon: https://raw.githubusercontent.com/rahacloud/wpfleet/main/internal/infra/web/ui/static/favicon.svg
+keywords:
+  - wordpress
+  - wpfleet
+maintainers:
+  - name: RahaCloud
+    url: https://github.com/rahacloud
