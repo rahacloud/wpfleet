@@ -54,4 +54,7 @@ jobs:
           version: v2.20.3
           args: release --snapshot --clean --skip=publish,sign
       - name: Run the image
-        run: docker run --rm "ghcr.io/rahacloud/wpfleet:latest-amd64" --version
+        # A snapshot builds one local image per platform, tagged with an -<arch>
+        # suffix. The version tag is always rendered; `latest` is not after a
+        # pre-release tag.
+        run: docker run --rm "ghcr.io/rahacloud/wpfleet:$(jq -r .version dist/metadata.json)-amd64" --version

@@ -16,7 +16,7 @@ A release starts when someone pushes a tag `v*`. The `Release` workflow (`.githu
 
 5. Watch the workflow run. When it is done, read the GitHub release: its notes come from the commits since the previous tag.
 
-The release notes group commits by their prefix: `feat:` under Features, `fix:` under Bug fixes, `sec:` under Security, `perf:` under Performance, `build(deps):` and `chore(deps):` under Dependencies, and every other commit under Other changes. Commits that start with `docs:`, `test:`, `chore:` or `ci:` are left out. A commit message that starts with a plain sentence is fine; it lands in Other changes.
+The release notes group commits by their prefix: `feat:` under Features, `fix:` under Bug fixes, `sec:` under Security, `perf:` under Performance, `build(deps):`, `chore(deps):` and `ci(deps):` under Dependencies, and every other commit under Other changes. Commits that start with `docs:`, `test:`, `chore:` or `ci:` are left out. A commit message that starts with a plain sentence is fine; it lands in Other changes.
 
 A broken release is not fixed by moving its tag, because people may already have pulled what it published. Fix the problem on `main` and release the next patch version.
 
@@ -93,10 +93,10 @@ gh attestation verify wpfleet_0.1.0_linux_amd64.tar.gz \
   --signer-workflow rahacloud/wpfleet/.github/workflows/release.yml
 
 gh attestation verify oci://ghcr.io/rahacloud/wpfleet:0.1.0 --repo rahacloud/wpfleet
-gh attestation verify oci://ghcr.io/rahacloud/charts/wordpress:0.1.0 --repo rahacloud/wpfleet
+gh attestation verify oci://ghcr.io/rahacloud/charts/wordpress:0.1.0 --repo rahacloud/wpfleet --bundle-from-oci
 ```
 
-`gh attestation verify` needs a GitHub login. For the charts, `--bundle-from-oci` reads the attestation from the registry, where the workflow pushes it beside the chart, instead of from the GitHub API.
+`gh attestation verify` needs a GitHub login. Without `--bundle-from-oci` it fetches the attestation from the GitHub API. The workflow also pushes each chart's attestation to the registry beside the chart, and `--bundle-from-oci` reads it from there; the chart command above uses it, and it also works without the flag. The archives and the image have their attestations only in the GitHub API, so their commands do not take the flag.
 
 ## While the repository is private
 
