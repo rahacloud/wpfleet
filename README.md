@@ -1,8 +1,17 @@
 <h1><img src="docs/images/banner.svg" alt="wpfleet: WordPress sites on Kubernetes, run from one Git repository" width="100%"></h1>
 
+<p align="center">
+  <a href="https://github.com/rahacloud/wpfleet/actions/workflows/ci.yml"><img src="https://github.com/rahacloud/wpfleet/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/rahacloud/wpfleet/releases/latest"><img src="https://img.shields.io/github/v/release/rahacloud/wpfleet?sort=semver&amp;display_name=tag" alt="Latest release"></a>
+  <a href="https://pkg.go.dev/github.com/rahacloud/wpfleet"><img src="https://pkg.go.dev/badge/github.com/rahacloud/wpfleet.svg" alt="Go Reference"></a>
+  <a href="https://goreportcard.com/report/github.com/rahacloud/wpfleet"><img src="https://goreportcard.com/badge/github.com/rahacloud/wpfleet" alt="Go Report Card"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/rahacloud/wpfleet"><img src="https://api.scorecard.dev/projects/github.com/rahacloud/wpfleet/badge" alt="OpenSSF Scorecard"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/rahacloud/wpfleet" alt="License: Apache-2.0"></a>
+</p>
+
 Manage a fleet of WordPress sites on Kubernetes from one Git repository: deploy every site with one shared Helm chart, build and promote site images from development to production, open a site's admin with a one-time link, and back sites up to S3 and restore them.
 
-> **Status: before its first release.** Every command in [docs/design.md](docs/design.md) is built and covered by tests against fakes. `sites list`, `deploy`, `diff`, `promote` and `admin` have run against a real cluster (a local kind cluster, 2026-11-27); `build`, `backup` and `copy` have not yet run against a real registry or bucket. `serve` has run in the same kind cluster from its chart, with Dex for sign-in, Gitea as the fleet repository and an invented brand, and was driven in headless Chromium (2026-11-27); backups through it have not run, since that cluster has no bucket. Expect rough edges until v0.1. `docs/design.md` is the contract the commands are built against.
+> **Status: before its first release, and not yet run on a production fleet.** Every command in [docs/design.md](docs/design.md) is built and covered by tests against fakes. The only real cluster wpfleet has run against is a local kind cluster with an invented fleet (2026-11-27): there, `sites list`, `deploy`, `diff`, `promote` and `admin` ran, and `serve` ran from its chart with Dex for sign-in, Gitea as the fleet repository and an invented brand, driven in headless Chromium. `build` has not run against a real registry, and `backup`, `copy` and the backups in `serve` have not run against a real bucket. No command has run against a shared, hosted or production cluster yet. The first release waits for a trial on a real staging and development fleet; until then, expect rough edges.
 
 ## How it works
 
@@ -71,6 +80,16 @@ The pictures come from a demo on a local kind cluster (2026-11-27), not from a r
 ### Make it yours
 
 The UI carries your organization's name, logo, favicon and color, a welcome line on the home page and a support contact behind every "Need help?", all set in `server.branding` ([docs/configuration.md](docs/configuration.md#serverbranding)). The logo and favicon are files in your own fleet repository, so a new logo is a commit, and the color is adjusted just enough to stay readable on light and dark pages. The footer is not part of the branding: every page always says "Powered by wpfleet", its version, the Apache-2.0 license and a link to this repository, and no setting hides it.
+
+## Install
+
+wpfleet is one static binary with the WordPress chart built in. Each release puts archives for Linux, macOS and Windows on the [releases page](https://github.com/rahacloud/wpfleet/releases), the server image at `ghcr.io/rahacloud/wpfleet` and both charts at `oci://ghcr.io/rahacloud/charts`, all signed; [docs/releasing.md](docs/releasing.md#verify-a-release) says how to verify them. With Go installed you can also build it yourself:
+
+```bash
+go install github.com/rahacloud/wpfleet/cmd/wpfleet@latest
+```
+
+Until the first release, `@latest` builds the newest commit on `main`. [docs/getting-started.md](docs/getting-started.md) goes on from here to a first site.
 
 ## Development
 
