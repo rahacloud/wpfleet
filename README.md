@@ -44,6 +44,10 @@ just lint     # golangci-lint and helm lint
 
 [docs/releasing.md](docs/releasing.md) says how a release is cut, what it publishes and how to verify its signatures and provenance.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [code of conduct](CODE_OF_CONDUCT.md). Report a vulnerability privately, as [SECURITY.md](SECURITY.md) says.
+
 ## License
 
 Apache-2.0, see [LICENSE](LICENSE).

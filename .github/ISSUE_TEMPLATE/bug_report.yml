@@ -1,0 +1,62 @@
+name: Bug report
+description: Something in wpfleet does not work as docs/design.md says it should.
+title: "bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for the report. Report a vulnerability privately through the security advisory form, never here.
+
+        Do not paste secrets, real host names or a real fleet's site files. Replace them with `example.com`, `blog`, `shop` and the like.
+  - type: input
+    id: version
+    attributes:
+      label: wpfleet version
+      description: The output of `wpfleet --version`, or the commit you built.
+      placeholder: wpfleet version v0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - CLI command
+        - Server (wpfleet serve)
+        - WordPress chart
+        - Backup and restore
+        - One-time admin login
+        - Installation or release
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: The command you ran and its output, with secrets removed.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce it
+      description: The smallest fleet and the steps that show the bug. A `wpfleet.yaml` and site files with invented values help most.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Kubernetes distribution and version, Helm version if relevant, operating system, and S3 or registry provider if relevant.
+      placeholder: |
+        Kubernetes: kind v1.33
+        OS: Linux amd64
