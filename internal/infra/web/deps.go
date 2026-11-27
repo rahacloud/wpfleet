@@ -142,7 +142,7 @@ type Locker interface {
 type Auditor func(ctx context.Context, r audit.Record)
 
 // Deps are what the server is built from. Every field but Logger,
-// VerifyWebhook and Now is required.
+// VerifyWebhook, Now, Branding and Version is required.
 type Deps struct {
 	// Auth signs people in.
 	Auth Authenticator
@@ -170,6 +170,10 @@ type Deps struct {
 	VerifyWebhook func(body []byte, signature string) bool
 	// Now is the clock; nil uses time.Now.
 	Now func() time.Time
+	// Branding is the fleet's own look; the zero value is wpfleet's.
+	Branding Branding
+	// Version is wpfleet's version, which the footer of every page shows.
+	Version string
 }
 
 // ErrMissingDep is returned by New for a required dependency left nil.

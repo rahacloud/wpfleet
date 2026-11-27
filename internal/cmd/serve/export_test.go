@@ -46,7 +46,7 @@ func Run(ctx context.Context, log *slog.Logger, config, data string, getenv func
 	ready func(listen, metrics net.Addr),
 ) error {
 	return run(ctx, log, options{
-		config: config, data: data, shutdownTimeout: time.Minute, getenv: getenv, ready: ready,
+		config: config, data: data, shutdownTimeout: time.Minute, getenv: getenv, version: "v0.0.0-test", ready: ready,
 	})
 }
 
@@ -74,4 +74,9 @@ func FilterGroups(
 	ctx context.Context, p *oidc.Provider, policy access.Policy, code, verifier, nonce string,
 ) (access.Identity, error) {
 	return ruleGroups(p, policy).Exchange(ctx, code, verifier, nonce)
+}
+
+// CheckBranding checks the brand's images in the fleet at dir.
+func CheckBranding(dir string, b config.Branding) error {
+	return checkBranding(dir, b)
 }

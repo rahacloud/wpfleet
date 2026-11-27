@@ -39,7 +39,7 @@ const sessionKey = "wpfleet.session"
 // admin" posts here and is redirected to the site's own address, and
 // browsers check that redirect against form-action.
 const contentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; " +
-	"connect-src 'self'; form-action 'self' https: http:; frame-ancestors 'none'; base-uri 'none'"
+	"font-src 'self'; connect-src 'self'; form-action 'self' https: http:; frame-ancestors 'none'; base-uri 'none'"
 
 // Server is wpfleet serve's HTTP handler. It is an http.Handler; the metrics
 // are on a separate handler so they can listen on another address.
@@ -51,6 +51,7 @@ type Server struct {
 	tasks   *taskHub
 	metrics *metrics
 	syncer  *syncer
+	brand   *brandAssets
 
 	// base is the context the actions run under, canceled when Shutdown
 	// gives up waiting for them.
@@ -76,6 +77,11 @@ func New(d Deps) (*Server, error) {
 		now = time.Now
 	}
 
+	brandAssets, err := newBrandAssets(d.Branding, log)
+	if err != nil {
+		return nil, err
+	}
+
 	base, cancel := context.WithCancel(context.Background())
 	m := newMetrics()
 
@@ -87,6 +93,7 @@ func New(d Deps) (*Server, error) {
 		tasks:   newTaskHub(now),
 		metrics: m,
 		syncer:  nil,
+		brand:   brandAssets,
 		base:    base,
 		cancel:  cancel,
 		wg:      sync.WaitGroup{},
@@ -155,7 +162,12 @@ func (s *Server) routes() {
 	e.GET("/healthz", s.healthz)
 	e.GET("/readyz", s.readyz)
 	e.StaticFS("/static", ui.Static(), cacheStatic)
+	e.GET(logoPath, s.serveLogo)
+	e.GET(faviconPath, s.serveFavicon)
+	e.GET("/favicon.ico", s.serveFavicon)
+	e.GET(themePath, s.serveTheme)
 
+	e.GET(signInPath, s.signIn)
 	e.GET("/auth/login", s.login)
 	e.GET("/auth/callback", s.callback)
 	e.POST("/auth/logout", s.logout)
@@ -219,17 +231,17 @@ func (s *Server) requireSession(next echo.HandlerFunc) echo.HandlerFunc {
 		}
 
 		r := c.Request()
-		target := "/auth/login?return=" + url.QueryEscape(r.URL.RequestURI())
+		target := signInPath + "?return=" + url.QueryEscape(r.URL.RequestURI())
 
 		switch {
 		case r.Header.Get("Hx-Request") == "true":
-			c.Response().Header().Set("Hx-Redirect", "/auth/login")
+			c.Response().Header().Set("Hx-Redirect", signInPath)
 
 			return c.NoContent(http.StatusUnauthorized)
 		case r.Method == http.MethodGet && r.URL.Path != "/events":
 			return c.Redirect(http.StatusSeeOther, target)
 		default:
-			return s.message(c, http.StatusUnauthorized, i18n.SignIn, i18n.SignInFailed, true, "/auth/login", i18n.SignIn)
+			return s.message(c, http.StatusUnauthorized, i18n.SignIn, i18n.SignInFailed, true, signInPath, i18n.SignIn)
 		}
 	}
 }
@@ -241,9 +253,18 @@ func sessionOf(c *echo.Context) session.Session {
 	return sess
 }
 
-// lang is the request's language: the person's choice, else the browser's.
+// langParam is the query parameter that picks the language of a page shown
+// without a session, such as the sign-in page.
+const langParam = "lang"
+
+// lang is the request's language: the person's choice, else the one the
+// page's address asks for, else the browser's.
 func (s *Server) lang(c *echo.Context) i18n.Lang {
 	if l, ok := i18n.Parse(sessionOf(c).Lang); ok {
+		return l
+	}
+
+	if l, ok := i18n.Parse(c.QueryParam(langParam)); ok {
 		return l
 	}
 
@@ -253,23 +274,51 @@ func (s *Server) lang(c *echo.Context) i18n.Lang {
 // page is the layout's view of a request.
 func (s *Server) page(c *echo.Context, title string) ui.Page {
 	sess := sessionOf(c)
+	l := s.lang(c)
 
-	return ui.Page{
-		L:      s.lang(c),
-		Title:  title,
-		User:   displayName(sess.Identity),
-		CSRF:   sess.CSRF,
-		Return: c.Request().URL.RequestURI(),
+	p := ui.Page{
+		L:         l,
+		Title:     title,
+		User:      displayName(sess.Identity),
+		UserEmail: sess.Identity.Email,
+		CSRF:      sess.CSRF,
+		Return:    c.Request().URL.RequestURI(),
+		LangLinks: nil,
+		Brand:     s.brand.view(l),
+		Version:   s.deps.Version,
 	}
+
+	if p.User == "" {
+		p.LangLinks = langLinks(c.Request().URL, l)
+	}
+
+	return p
 }
 
-// displayName is how the header names a person.
-func displayName(id access.Identity) string {
-	if id.Email != "" {
-		return id.Email
+// langLinks are links to the page at u in every language but l.
+func langLinks(u *url.URL, l i18n.Lang) []ui.LangLink {
+	var links []ui.LangLink
+
+	for _, other := range i18n.Supported() {
+		if other == l {
+			continue
+		}
+
+		q := u.Query()
+		q.Set(langParam, other.Code())
+		links = append(links, ui.LangLink{L: other, URL: u.EscapedPath() + "?" + q.Encode()})
 	}
 
-	return id.Name
+	return links
+}
+
+// displayName is how the header names a person: by name, else by email.
+func displayName(id access.Identity) string {
+	if id.Name != "" {
+		return id.Name
+	}
+
+	return id.Email
 }
 
 // render writes a component as an HTML response.

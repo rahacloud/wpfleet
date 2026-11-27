@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -261,5 +262,79 @@ func TestServerSecretsFromEnv(t *testing.T) {
 		_, err := config.ServerSecretsFromEnv(env(vars))
 		testutil.ErrorIs(t, err, config.ErrInvalid)
 		testutil.Contains(t, "error", err.Error(), want)
+	}
+}
+
+func TestBrandingDefaults(t *testing.T) {
+	t.Parallel()
+
+	cfg, err := config.Load(writeFleet(t, sample), noEnv)
+	testutil.NoError(t, err)
+
+	b := cfg.Server.Branding
+	testutil.Equal(t, "name", b.Name, "wpfleet")
+	testutil.Equal(t, "color", b.PrimaryColor, "#1f5fbf")
+	testutil.Equal(t, "no logo", b.Logo, "")
+	testutil.Equal(t, "no favicon", b.Favicon, "")
+	testutil.Equal(t, "no welcome", b.Welcome, config.Welcome{EN: "", FA: ""})
+}
+
+func TestLoadBranding(t *testing.T) {
+	t.Parallel()
+
+	const branding = `  branding:
+    name: Northwind Media
+    logo: brand/northwind.svg
+    favicon: brand/favicon.png
+    primaryColor: "#0E7C66"
+    supportURL: https://help.example.com/wordpress
+    supportEmail: web-help@example.com
+    welcome:
+      en: Open your site's dashboard from here.
+      fa: داشبورد سایت خود را از اینجا باز کنید.
+`
+
+	cfg, err := config.Load(writeFleet(t, serverSample+branding), func() []string {
+		return []string{"WPFLEET_SERVER__BRANDING__PRIMARYCOLOR=#123"}
+	})
+	testutil.NoError(t, err)
+	testutil.NoError(t, cfg.ValidateServer())
+
+	testutil.DeepEqual(t, "branding", cfg.Server.Branding, config.Branding{
+		Name: "Northwind Media", Logo: "brand/northwind.svg", Favicon: "brand/favicon.png", PrimaryColor: "#123",
+		SupportURL: "https://help.example.com/wordpress", SupportEmail: "web-help@example.com",
+		Welcome: config.Welcome{EN: "Open your site's dashboard from here.", FA: "داشبورد سایت خود را از اینجا باز کنید."},
+	})
+}
+
+func TestValidateBranding(t *testing.T) {
+	t.Parallel()
+
+	const envs = "environments:\n  - {name: staging, namespace: wp-staging}\n"
+
+	long := strings.Repeat("a", config.MaxWelcomeLength+1)
+
+	tests := map[string]string{
+		"server.branding.name is empty":          `server: {branding: {name: " "}}`,
+		"logo must be a relative path":           `server: {branding: {logo: /etc/passwd.png}}`,
+		"inside the fleet repository, not \"../": `server: {branding: {logo: ../other/logo.svg}}`,
+		"favicon must be a relative path":        `server: {branding: {favicon: 'brand\x5clogo.png'}}`,
+		"logo must be a .png, .svg or .webp":     `server: {branding: {logo: brand/logo.gif}}`,
+		"favicon must be a .png, .svg or .webp":  `server: {branding: {favicon: favicon.ico}}`,
+		"primaryColor is not a CSS hex color":    `server: {branding: {primaryColor: blue}}`,
+		"supportURL must be an absolute":         `server: {branding: {supportURL: help.example.com}}`,
+		"supportEmail must be a plain address":   `server: {branding: {supportEmail: "Help <help@example.com>"}}`,
+		"supportEmail must be a plain":           `server: {branding: {supportEmail: not-an-address}}`,
+		"welcome.fa has 501 characters":          `server: {branding: {welcome: {fa: ` + long + `}}}`,
+	}
+
+	for want, content := range tests {
+		t.Run(want, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := config.Load(writeFleet(t, envs+content), noEnv)
+			testutil.ErrorIs(t, err, config.ErrInvalid)
+			testutil.Contains(t, "error", err.Error(), want)
+		})
 	}
 }

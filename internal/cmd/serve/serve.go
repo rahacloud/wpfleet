@@ -27,6 +27,7 @@ import (
 	"github.com/rahacloud/wpfleet/internal/infra/oidc"
 	"github.com/rahacloud/wpfleet/internal/infra/session"
 	"github.com/rahacloud/wpfleet/internal/infra/web"
+	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 	"github.com/rahacloud/wpfleet/internal/ops"
 )
 
@@ -105,6 +106,7 @@ func Command() *cli.Command {
 				data:            cmd.String(flagData),
 				shutdownTimeout: cmd.Duration(flagShutdownTimeout),
 				getenv:          os.Getenv,
+				version:         cmd.Root().Version,
 				ready:           nil,
 			})
 		},
@@ -117,6 +119,8 @@ type options struct {
 	data            string
 	shutdownTimeout time.Duration
 	getenv          func(string) string
+	// version is wpfleet's version, for the footer of the UI.
+	version string
 	// ready, when set, gets the addresses the servers listen on once they
 	// do; tests listen on port 0 and read it.
 	ready func(listen, metrics net.Addr)
@@ -130,6 +134,11 @@ func run(ctx context.Context, log *slog.Logger, o options) error {
 	}
 
 	fleetClone, err := openClone(ctx, log, o.data, srv.Git, secrets, policy)
+	if err != nil {
+		return err
+	}
+
+	err = checkBranding(fleetClone.Dir(), srv.Branding)
 	if err != nil {
 		return err
 	}
@@ -170,6 +179,8 @@ func run(ctx context.Context, log *slog.Logger, o options) error {
 		Committer:     gitrepo.Signature{Name: srv.Git.Committer.Name, Email: srv.Git.Committer.Email},
 		VerifyWebhook: webhookVerifier(secrets.GitWebhookSecret),
 		Now:           nil,
+		Branding:      branding(srv.Branding, fleetClone.Dir),
+		Version:       o.version,
 	})
 	if err != nil {
 		return err
@@ -441,6 +452,37 @@ func checkFleet(dir string, policy access.Policy) error {
 	}
 
 	return nil
+}
+
+// checkBranding refuses a start whose logo or favicon, in the fleet at
+// dir, is missing, too large or not the type its name says. After a push
+// the server leaves a broken one out and logs why instead, so a bad commit
+// never takes the pages down.
+func checkBranding(dir string, b config.Branding) error {
+	for _, f := range []struct{ key, path string }{
+		{"server.branding.logo", b.Logo}, {"server.branding.favicon", b.Favicon},
+	} {
+		if f.path == "" {
+			continue
+		}
+
+		_, err := web.LoadBrandImage(dir, f.path)
+		if err != nil {
+			return fmt.Errorf("%s in the fleet repository: %w", f.key, err)
+		}
+	}
+
+	return nil
+}
+
+// branding turns the server section's branding into the web server's,
+// reading the images from the newest snapshot of the fleet.
+func branding(b config.Branding, dir func() string) web.Branding {
+	return web.Branding{
+		Name: b.Name, Logo: b.Logo, Favicon: b.Favicon, Dir: dir, PrimaryColor: b.PrimaryColor,
+		SupportURL: b.SupportURL, SupportEmail: b.SupportEmail,
+		Welcome: map[i18n.Lang]string{i18n.English: b.Welcome.EN, i18n.Persian: b.Welcome.FA},
+	}
 }
 
 // webhookVerifier checks a push webhook against secret; with no secret the
