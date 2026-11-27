@@ -1089,7 +1089,43 @@ func TestLogout(t *testing.T) {
 
 	w = h.request(http.MethodPost, "/auth/logout", form(csrf), cookie)
 	testutil.Equal(t, "status", w.Code, http.StatusOK)
-	testutil.Contains(t, "page", w.Body.String(), "You have signed out.", `href="/auth/signin"`)
+	testutil.Contains(t, "page", w.Body.String(), "You have signed out.", `href="/auth/signin?lang=en"`,
+		`href="/auth/signin?lang=fa" lang="fa"`)
+	testutil.NotContains(t, "no link to a GET of sign-out", w.Body.String(), `href="/auth/logout`)
+
+	// The page after sign-out is in the language the person used, and so
+	// is its link to sign in again.
+	cookie, csrf = h.as(editor(), "fa")
+	w = h.request(http.MethodPost, "/auth/logout", form(csrf), cookie)
+	testutil.Contains(t, "Persian page", w.Body.String(), `dir="rtl"`, `href="/auth/signin?lang=fa"`)
+}
+
+// A language picked on the sign-in page goes through the provider into the
+// session, and the pages of a failed sign-in keep it too.
+func TestSignInKeepsTheLanguage(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	page := h.request(http.MethodGet, "/auth/signin?return=%2F&lang=fa", nil, nil).Body.String()
+	testutil.Contains(t, "sign-in page", page, `href="/auth/login?lang=fa&amp;return=%2F"`)
+
+	w := h.request(http.MethodGet, "/auth/login?return=%2F&lang=fa", nil, nil)
+	location, err := url.Parse(w.Header().Get("Location"))
+	testutil.NoError(t, err)
+
+	callback := "/auth/callback?code=abc&state=" + url.QueryEscape(location.Query().Get("state"))
+	w = h.request(http.MethodGet, callback, nil, w.Result().Cookies()[0])
+	testutil.Equal(t, "callback", w.Code, http.StatusSeeOther)
+
+	home := h.request(http.MethodGet, "/", nil, w.Result().Cookies()[0]).Body.String()
+	testutil.Contains(t, "home in Persian", home, `dir="rtl"`)
+
+	// A sign-in the provider refuses answers in the language picked too.
+	w = h.request(http.MethodGet, "/auth/login?lang=fa", nil, nil)
+	w = h.request(http.MethodGet, "/auth/callback?error=access_denied", nil, w.Result().Cookies()[0])
+	testutil.Contains(t, "failed sign-in", w.Body.String(), `dir="rtl"`, `href="/auth/signin?lang=fa"`)
+	testutil.NotContains(t, "no link back to the callback", w.Body.String(), `href="/auth/callback`)
 }
 
 func TestNewNeedsItsDependencies(t *testing.T) {

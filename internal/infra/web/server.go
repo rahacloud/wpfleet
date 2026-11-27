@@ -248,7 +248,7 @@ func (s *Server) requireSession(next echo.HandlerFunc) echo.HandlerFunc {
 		case r.Method == http.MethodGet && r.URL.Path != "/events":
 			return c.Redirect(http.StatusSeeOther, target)
 		default:
-			return s.message(c, http.StatusUnauthorized, i18n.SignIn, i18n.SignInFailed, true, signInPath, i18n.SignIn)
+			return s.message(c, http.StatusUnauthorized, i18n.SignIn, i18n.SignInFailed, true, s.signInLink(c), i18n.SignIn)
 		}
 	}
 }
@@ -264,10 +264,19 @@ func sessionOf(c *echo.Context) session.Session {
 // without a session, such as the sign-in page.
 const langParam = "lang"
 
-// lang is the request's language: the person's choice, else the one the
-// page's address asks for, else the browser's.
+// langKey is where a handler that has no session on the context, such as
+// the callback and sign-out, keeps the language the person picked.
+const langKey = "wpfleet.lang"
+
+// lang is the request's language: the person's choice, in the session or
+// kept by the handler, else the one the page's address asks for, else the
+// browser's.
 func (s *Server) lang(c *echo.Context) i18n.Lang {
 	if l, ok := i18n.Parse(sessionOf(c).Lang); ok {
+		return l
+	}
+
+	if l, ok := c.Get(langKey).(i18n.Lang); ok {
 		return l
 	}
 
@@ -296,10 +305,22 @@ func (s *Server) page(c *echo.Context, title string) ui.Page {
 	}
 
 	if p.User == "" {
-		p.LangLinks = langLinks(c.Request().URL, l)
+		p.LangLinks = langLinks(langBase(c.Request()), l)
 	}
 
 	return p
+}
+
+// langBase is the page the language links of a page without a session
+// lead to: the page itself when a GET can show it again, else the sign-in
+// page. The page after sign-out answers a POST, and the callback's code is
+// used up, so their links would fail.
+func langBase(r *http.Request) *url.URL {
+	if r.Method == http.MethodGet && r.URL.Path != "/auth/callback" {
+		return r.URL
+	}
+
+	return &url.URL{Path: signInPath} //nolint:exhaustruct_v5 // a path alone
 }
 
 // langLinks are links to the page at u in every language but l.

@@ -365,6 +365,8 @@ func TestFlowRoundTrip(t *testing.T) {
 	flow, err := session.NewFlow("/sites/staging/blog?tab=backups")
 	testutil.NoError(t, err)
 
+	flow.Lang = "fa"
+
 	testutil.Equal(t, "verifier length", len(flow.Verifier), 43)
 	testutil.True(t, "state, nonce and verifier differ", flow.State != flow.Nonce && flow.Nonce != flow.Verifier)
 

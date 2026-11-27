@@ -25,7 +25,15 @@ func (s *Server) signIn(c *echo.Context) error {
 	}
 
 	l := s.lang(c)
-	v := ui.SignInView{LoginURL: "/auth/login?return=" + url.QueryEscape(back)}
+	q := url.Values{"return": {back}}
+
+	// A language picked on this page goes through the sign-in into the
+	// session.
+	if picked, ok := i18n.Parse(c.QueryParam(langParam)); ok {
+		q.Set(langParam, picked.Code())
+	}
+
+	v := ui.SignInView{LoginURL: "/auth/login?" + q.Encode()}
 
 	return render(c, http.StatusOK, ui.SignInPage(s.page(c, l.T(i18n.SignIn)), v))
 }

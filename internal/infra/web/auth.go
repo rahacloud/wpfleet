@@ -13,12 +13,17 @@ import (
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 )
 
-// login starts a sign-in: it keeps the state, nonce, PKCE verifier and the
-// return path in the flow cookie and sends the browser to the provider.
+// login starts a sign-in: it keeps the state, nonce, PKCE verifier, the
+// return path and the language picked on the sign-in page in the flow
+// cookie and sends the browser to the provider.
 func (s *Server) login(c *echo.Context) error {
 	flow, err := session.NewFlow(c.QueryParam("return"))
 	if err != nil {
 		return err
+	}
+
+	if l, ok := i18n.Parse(c.QueryParam(langParam)); ok {
+		flow.Lang = l.Code()
 	}
 
 	err = s.deps.Sessions.SetFlow(c.Response(), flow)
@@ -56,6 +61,13 @@ func (s *Server) callback(c *echo.Context) error {
 
 	var nobody access.Identity
 
+	// The flow is taken first, so even a refused sign-in answers in the
+	// language picked before it.
+	flow, ok := s.deps.Sessions.TakeFlow(c.Response(), c.Request())
+	if l, known := i18n.Parse(flow.Lang); ok && known {
+		c.Set(langKey, l)
+	}
+
 	if e := c.QueryParam("error"); e != "" {
 		reason := joinDetail(oauthText(e, maxErrorCode), oauthText(c.QueryParam("error_description"), maxErrorDescription))
 		s.authRecord(ctx, actionSignIn, nobody, audit.ResultDenied, joinDetail("the provider refused the sign-in", reason))
@@ -63,7 +75,6 @@ func (s *Server) callback(c *echo.Context) error {
 		return s.signInFailed(c)
 	}
 
-	flow, ok := s.deps.Sessions.TakeFlow(c.Response(), c.Request())
 	if !ok || !flow.CheckState(c.QueryParam("state")) {
 		s.authRecord(ctx, actionSignIn, nobody, audit.ResultDenied, "a callback without its flow or with another state")
 
@@ -84,7 +95,7 @@ func (s *Server) callback(c *echo.Context) error {
 		return s.message(c, http.StatusForbidden, i18n.NoAccessTitle, i18n.NoAccess, true, "", i18n.SignIn)
 	}
 
-	sess, err := s.deps.Sessions.New(id, "")
+	sess, err := s.deps.Sessions.New(id, flow.Lang)
 	if err == nil {
 		err = s.deps.Sessions.Set(c.Response(), sess)
 	}
@@ -127,9 +138,16 @@ func oauthText(raw string, limit int) string {
 	return b.String()
 }
 
-// signInFailed says the sign-in failed and offers another.
+// signInFailed says the sign-in failed and offers another, in the same
+// language.
 func (s *Server) signInFailed(c *echo.Context) error {
-	return s.message(c, http.StatusUnauthorized, i18n.SignIn, i18n.SignInFailed, true, signInPath, i18n.SignIn)
+	return s.message(c, http.StatusUnauthorized, i18n.SignIn, i18n.SignInFailed, true, s.signInLink(c), i18n.SignIn)
+}
+
+// signInLink is the sign-in page in the request's language, so a person who
+// picked one keeps it when they sign in again.
+func (s *Server) signInLink(c *echo.Context) string {
+	return signInPath + "?" + langParam + "=" + s.lang(c).Code()
 }
 
 // logout ends the session. It is a POST with the CSRF token, so another site
@@ -149,9 +167,14 @@ func (s *Server) logout(c *echo.Context) error {
 
 	if ok {
 		s.authRecord(ctx, actionSignOut, sess.Identity, audit.ResultOK, "")
+
+		// The page after sign-out keeps the language the person used.
+		if l, known := i18n.Parse(sess.Lang); known {
+			c.Set(langKey, l)
+		}
 	}
 
-	return s.message(c, http.StatusOK, i18n.SignedOutTitle, i18n.SignedOut, false, signInPath, i18n.SignIn)
+	return s.message(c, http.StatusOK, i18n.SignedOutTitle, i18n.SignedOut, false, s.signInLink(c), i18n.SignIn)
 }
 
 // setLang stores the language a person picked in their session.

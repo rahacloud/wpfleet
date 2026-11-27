@@ -105,6 +105,9 @@ type Flow struct {
 	Verifier string
 	// ReturnTo is the same-site path to open after the sign-in.
 	ReturnTo string
+	// Lang is the UI language the person picked before signing in, which
+	// the session starts with; empty follows the browser.
+	Lang string
 	// Expires is when the flow ends.
 	Expires time.Time
 }
@@ -129,6 +132,7 @@ func NewFlow(returnTo string) (Flow, error) {
 		Nonce:    tokens[1],
 		Verifier: tokens[2],
 		ReturnTo: SafeReturnPath(returnTo),
+		Lang:     "",
 		Expires:  time.Now().Add(FlowTTL).Truncate(time.Second),
 	}, nil
 }
@@ -152,6 +156,7 @@ type flowPayload struct {
 	Nonce    string `json:"nonce"`
 	Verifier string `json:"verifier"`
 	ReturnTo string `json:"return"`
+	Lang     string `json:"lang,omitempty"`
 	Expires  int64  `json:"exp"`
 }
 
@@ -306,6 +311,7 @@ func (m *Manager) SetFlow(w http.ResponseWriter, f Flow) error {
 		Nonce:    f.Nonce,
 		Verifier: f.Verifier,
 		ReturnTo: SafeReturnPath(f.ReturnTo),
+		Lang:     f.Lang,
 		Expires:  f.Expires.Unix(),
 	})
 	if err != nil {
@@ -347,6 +353,7 @@ func (m *Manager) TakeFlow(w http.ResponseWriter, r *http.Request) (Flow, bool) 
 		Nonce:    p.Nonce,
 		Verifier: p.Verifier,
 		ReturnTo: SafeReturnPath(p.ReturnTo),
+		Lang:     p.Lang,
 		Expires:  expires,
 	}, true
 }
