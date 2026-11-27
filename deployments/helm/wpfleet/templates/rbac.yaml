@@ -11,8 +11,14 @@ metadata:
 rules:
   # What Helm installs and upgrades for a site, and what the operations read.
   - apiGroups: [""]
-    resources: [secrets, configmaps, services, persistentvolumeclaims, pods]
+    resources: [secrets, configmaps, services, persistentvolumeclaims]
     verbs: [get, list, watch, create, update, patch, delete]
+  # Pods are only read: the chart makes them through Deployments and Jobs,
+  # and the right to create one would let a stolen token run as any other
+  # ServiceAccount of the namespace.
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [get, list, watch]
   - apiGroups: [apps]
     resources: [deployments]
     verbs: [get, list, watch, create, update, patch, delete]
