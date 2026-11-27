@@ -76,9 +76,11 @@ func TestFleetOpsPromotesInTheGivenDirectory(t *testing.T) {
 	served := fleetDir(t)
 	clone := fleetDir(t)
 
-	files, err := fleetOps(served).Promote(t.Context(), clone, envStaging, siteBlog)
+	applied, files, err := fleetOps(served).Promote(t.Context(), clone, envStaging, siteBlog)
 	testutil.NoError(t, err)
 	testutil.DeepEqual(t, "files", files, []string{stagingBlogFile})
+	testutil.Equal(t, "applied", applied.Target.Tag, "v4")
+	testutil.Equal(t, "from the clone", applied.Current.Tag, "v3")
 
 	testutil.Contains(t, "the clone's file", testutil.ReadFile(t, filepath.Join(clone, files[0])),
 		"# The blog in staging.", "tag: v4 # pinned")

@@ -11,6 +11,7 @@ import (
 
 	"github.com/rahacloud/wpfleet/internal/domain/access"
 	"github.com/rahacloud/wpfleet/internal/domain/audit"
+	"github.com/rahacloud/wpfleet/internal/domain/fleet"
 	"github.com/rahacloud/wpfleet/internal/infra/gitrepo"
 	"github.com/rahacloud/wpfleet/internal/infra/session"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui"
@@ -20,6 +21,10 @@ import (
 
 // errDeployFailed is the error of a deploy whose release failed.
 var errDeployFailed = errors.New("the deploy failed")
+
+// errPromotionMoved is the error of a promote whose versions changed between
+// its plan and its commit, so the commit would not say what it did.
+var errPromotionMoved = errors.New("the versions changed while publishing; try again")
 
 // record is an audit record of an action by the person in sess, allowed
 // unless the caller says otherwise.
@@ -202,10 +207,19 @@ func (s *Server) promote(c *echo.Context) error {
 }
 
 // publish commits the promotion, unless the target already runs the
-// version, and deploys the commit.
+// version, and deploys the commit. It syncs before it plans, so the plan,
+// the commit message and the audit detail describe the branch as it is, not
+// a snapshot up to a poll interval old.
 func (s *Server) publish(ctx context.Context, tk *task, t target) outcome {
 	fail := func(err error, detail string) outcome {
 		return outcome{err: err, key: 0, args: nil, commit: "", detail: detail}
+	}
+
+	tk.line(i18n.Syncing)
+
+	sha, err := s.deps.Repo.Sync(ctx)
+	if err != nil {
+		return fail(fmt.Errorf("syncing the fleet repository: %w", err), "")
 	}
 
 	plan, err := s.deps.Ops.PlanPromotion(t.env, t.site)
@@ -215,31 +229,51 @@ func (s *Server) publish(ctx context.Context, tk *task, t target) outcome {
 
 	detail := plan.Current.String() + " -> " + plan.Target.String()
 
-	var sha string
+	if !plan.Changed() {
+		tk.line(i18n.AlreadyPublished)
 
-	if plan.Changed() {
-		msg := fmt.Sprintf("Publish %s from %s to %s\n\n%s\n\nRequested in wpfleet by %s.\n",
-			t.site, plan.From, plan.To, detail, displayName(t.sess.Identity))
-		author := gitrepo.Signature{Name: authorName(t.sess.Identity), Email: t.sess.Identity.Email}
+		return s.deployAt(ctx, tk, t, sha, detail)
+	}
 
-		sha, err = s.deps.Repo.Commit(ctx, msg, author, func(dir string) ([]string, error) {
-			return s.deps.Ops.Promote(ctx, dir, t.env, t.site)
-		})
-		if err != nil {
-			return fail(fmt.Errorf("committing the promotion: %w", err), detail)
-		}
+	msg := fmt.Sprintf("Publish %s from %s to %s\n\n%s\n\nRequested in wpfleet by %s.\n",
+		t.site, plan.From, plan.To, detail, displayName(t.sess.Identity))
+	author := gitrepo.Signature{Name: authorName(t.sess.Identity), Email: t.sess.Identity.Email}
 
-		tk.line(i18n.Published, ui.ShortSHA(sha))
-	} else {
+	sha, err = s.deps.Repo.Commit(ctx, msg, author, s.promotionEdit(ctx, t, plan))
+
+	switch {
+	case errors.Is(err, gitrepo.ErrNothingToCommit):
 		tk.line(i18n.AlreadyPublished)
 
 		sha, err = s.deps.Repo.Sync(ctx)
 		if err != nil {
 			return fail(fmt.Errorf("syncing the fleet repository: %w", err), detail)
 		}
+	case err != nil:
+		return fail(fmt.Errorf("committing the promotion: %w", err), detail)
+	default:
+		tk.line(i18n.Published, ui.ShortSHA(sha))
 	}
 
 	return s.deployAt(ctx, tk, t, sha, detail)
+}
+
+// promotionEdit applies the promotion in the clone. It changes nothing when
+// someone else published the version first, and refuses a plan other than
+// the one the commit message describes.
+func (s *Server) promotionEdit(ctx context.Context, t target, plan fleet.PromotionPlan) gitrepo.Edit {
+	return func(dir string) ([]string, error) {
+		applied, files, err := s.deps.Ops.Promote(ctx, dir, t.env, t.site)
+		if err != nil || !applied.Changed() {
+			return nil, err // no files: someone else published it first
+		}
+
+		if applied != plan {
+			return nil, fmt.Errorf("%w: %s -> %s", errPromotionMoved, applied.Current, applied.Target)
+		}
+
+		return files, nil
+	}
 }
 
 // authorName is the name a person's commits carry.

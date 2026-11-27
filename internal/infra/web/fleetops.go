@@ -173,22 +173,24 @@ func (o FleetOps) PlanPromotion(to, site string) (fleet.PromotionPlan, error) {
 }
 
 // Promote publishes site into to in the fleet at dir, which is the clone
-// that Repo.Commit hands its edit, and returns the changed files relative
-// to dir.
-func (o FleetOps) Promote(ctx context.Context, dir, to, site string) ([]string, error) {
+// that Repo.Commit hands its edit, and returns the plan it applied and the
+// changed files relative to dir.
+func (o FleetOps) Promote(ctx context.Context, dir, to, site string) (fleet.PromotionPlan, []string, error) {
+	var none fleet.PromotionPlan
+
 	f, err := ops.LoadFleet(dir)
 	if err != nil {
-		return nil, err
+		return none, nil, err
 	}
 
 	p, err := ops.PlanPromotion(f, to, []string{site})
 	if err != nil {
-		return nil, err
+		return none, nil, err
 	}
 
 	_, err = ops.ApplyPromotion(ctx, p)
 	if err != nil {
-		return nil, err
+		return none, nil, err
 	}
 
 	files := p.Files()
@@ -197,13 +199,13 @@ func (o FleetOps) Promote(ctx context.Context, dir, to, site string) ([]string, 
 	for _, file := range files {
 		r, err := relativeTo(dir, file)
 		if err != nil {
-			return nil, err
+			return none, nil, err
 		}
 
 		rel = append(rel, r)
 	}
 
-	return rel, nil
+	return p.Plans[0], rel, nil
 }
 
 // Deploy deploys a site and waits for it to be ready, recording commit.

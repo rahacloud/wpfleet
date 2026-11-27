@@ -195,6 +195,7 @@ type commitCall struct {
 // fakeRepo is a clone whose head moves on every commit.
 type fakeRepo struct {
 	mu      sync.Mutex
+	onSync  func()
 	head    string
 	dir     string
 	syncs   int
@@ -208,6 +209,9 @@ func (r *fakeRepo) Sync(context.Context) (string, error) {
 	defer r.mu.Unlock()
 
 	r.syncs++
+	if r.onSync != nil {
+		r.onSync()
+	}
 
 	return r.head, nil
 }
@@ -225,6 +229,10 @@ func (r *fakeRepo) Commit(
 	files, err := edit(r.dir)
 	if err != nil {
 		return "", err
+	}
+
+	if len(files) == 0 {
+		return "", gitrepo.ErrNothingToCommit
 	}
 
 	r.mu.Lock()
@@ -277,6 +285,7 @@ type fakeOps struct {
 	envErr    error
 	block     bool
 	plan      fleet.PromotionPlan
+	applied   *fleet.PromotionPlan
 }
 
 // fakeRelease is the release ShowSite reports.
@@ -294,6 +303,7 @@ func newFakeOps() *fakeOps {
 		backupLog: "dumping <database>\n",
 		envErr:    nil,
 		block:     false,
+		applied:   nil,
 		envs: []web.Environment{
 			{Name: envDev, PromoteFrom: ""},
 			{Name: envStaging, PromoteFrom: envDev},
@@ -388,10 +398,21 @@ func (o *fakeOps) PlanPromotion(to, site string) (fleet.PromotionPlan, error) {
 	return o.plan, nil
 }
 
-func (o *fakeOps) Promote(_ context.Context, dir, to, site string) ([]string, error) {
+// Promote applies the plan, or applied when the test moved the branch under
+// the promotion.
+func (o *fakeOps) Promote(_ context.Context, dir, to, site string) (fleet.PromotionPlan, []string, error) {
 	o.record("Promote", to, site, dir)
 
-	return []string{"environments/" + to + "/" + site + ".yaml"}, nil
+	plan := o.plan
+	if o.applied != nil {
+		plan = *o.applied
+	}
+
+	if !plan.Changed() {
+		return plan, nil, nil
+	}
+
+	return plan, []string{"environments/" + to + "/" + site + ".yaml"}, nil
 }
 
 func (o *fakeOps) Deploy(

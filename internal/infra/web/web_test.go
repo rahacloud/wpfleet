@@ -589,6 +589,68 @@ func TestPromoteWithoutChangeOnlyDeploys(t *testing.T) {
 	testutil.Equal(t, "deploys", len(h.ops.called("Deploy")), 1)
 }
 
+// The snapshot can be a poll interval old: when the branch already holds the
+// promotion, which only the sync shows, the promote deploys it rather than
+// failing with nothing to commit.
+func TestPromoteSyncsBeforePlanning(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.repo.onSync = func() { h.ops.plan.Current = h.ops.plan.Target }
+	cookie, csrf := h.as(platform(), "")
+
+	w := h.request(http.MethodPost, "/sites/staging/blog/promote", form(csrf), cookie)
+	events := h.events(w.Header().Get("Location"), cookie).Body.String()
+	testutil.Contains(t, "events", events, "already has that version", "Deployed revision 4")
+
+	h.wait()
+
+	testutil.Equal(t, "commits", len(h.repo.commits), 0)
+	testutil.Equal(t, "deploys", len(h.ops.called("Deploy")), 1)
+	testutil.Equal(t, "result", h.audit.finished(t).Result, audit.ResultOK)
+}
+
+// Someone else published the same version between the plan and the commit:
+// the edit finds nothing to change, and the promote deploys their commit.
+func TestPromoteAlreadyPublishedByOthersDeploys(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	done := h.ops.plan
+	done.Current = done.Target
+	h.ops.applied = &done
+	cookie, csrf := h.as(platform(), "")
+
+	h.request(http.MethodPost, "/sites/staging/blog/promote", form(csrf), cookie)
+	h.wait()
+
+	testutil.Equal(t, "commits", len(h.repo.commits), 0)
+	testutil.Equal(t, "deploys", len(h.ops.called("Deploy")), 1)
+	testutil.Equal(t, "result", h.audit.finished(t).Result, audit.ResultOK)
+}
+
+// The source moved again between the plan and the commit: nothing is
+// committed under a message that names the older version.
+func TestPromoteRefusesAMovedSource(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	moved := h.ops.plan
+	moved.Target.Tag = "20261127-130000"
+	h.ops.applied = &moved
+	cookie, csrf := h.as(platform(), "")
+
+	h.request(http.MethodPost, "/sites/staging/blog/promote", form(csrf), cookie)
+	h.wait()
+
+	testutil.Equal(t, "commits", len(h.repo.commits), 0)
+	testutil.Equal(t, "deploys", len(h.ops.called("Deploy")), 0)
+
+	rec := h.audit.finished(t)
+	testutil.Equal(t, "result", rec.Result, audit.ResultFailed)
+	testutil.Contains(t, "detail", rec.Detail, "changed while publishing", "20261127-130000")
+}
+
 func TestPromoteFromNowhereIsRefused(t *testing.T) {
 	t.Parallel()
 

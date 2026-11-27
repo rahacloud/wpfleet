@@ -112,9 +112,10 @@ type FleetReader interface {
 // FleetRunner runs the operations that change a site, its files or its
 // database.
 type FleetRunner interface {
-	// Promote publishes site into to in the fleet at dir and returns the
-	// files it changed, relative to dir.
-	Promote(ctx context.Context, dir, to, site string) ([]string, error)
+	// Promote publishes site into to in the fleet at dir and returns the plan
+	// it applied and the files it changed, relative to dir; no files when the
+	// target already runs the source's version.
+	Promote(ctx context.Context, dir, to, site string) (fleet.PromotionPlan, []string, error)
 	// Deploy deploys site in env, recording commit.
 	Deploy(ctx context.Context, env, site string, commit ops.Commit, progress ops.Progress) (ops.DeployResult, error)
 	// AdminLogin makes a one-time login link, as the WordPress user whose
