@@ -7,3 +7,10 @@ appVersion: "0.1.0"
 home: https://github.com/rahacloud/wpfleet
 sources:
   - https://github.com/rahacloud/wpfleet
+icon: https://raw.githubusercontent.com/rahacloud/wpfleet/main/internal/infra/web/ui/static/favicon.svg
+keywords:
+  - wordpress
+  - wpfleet
+maintainers:
+  - name: RahaCloud
+    url: https://github.com/rahacloud
