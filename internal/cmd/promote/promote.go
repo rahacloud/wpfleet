@@ -6,27 +6,18 @@ package promote
 import (
 	"context"
 	"errors"
-	"fmt"
-	"log/slog"
-	"slices"
 
 	"github.com/urfave/cli/v3"
 
 	"github.com/rahacloud/wpfleet/internal/cmd/cmdutil"
-	"github.com/rahacloud/wpfleet/internal/domain/fleet"
-	"github.com/rahacloud/wpfleet/internal/infra/values"
+	"github.com/rahacloud/wpfleet/internal/ops"
 )
 
 // flagTo names the target environment.
 const flagTo = "to"
 
 // Result is one site's promotion as promote prints it.
-type Result struct {
-	fleet.PromotionPlan
-
-	// Changed says whether the target's site file changed.
-	Changed bool `json:"changed"`
-}
+type Result = ops.PromoteResult
 
 // Command is wpfleet promote.
 func Command() *cli.Command {
@@ -52,9 +43,8 @@ func Command() *cli.Command {
 // run is the promote command's action. It plans every site before it writes
 // any file, so a site without an image stops the whole promotion.
 func run(ctx context.Context, cmd *cli.Command) error {
-	names := unique(cmd.Args().Slice())
-	if len(names) == 0 {
-		return cmdutil.ErrNoSites
+	if len(cmd.Args().Slice()) == 0 {
+		return ops.ErrNoSites
 	}
 
 	f, err := cmdutil.LoadFleet(cmd)
@@ -62,29 +52,12 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	plans, edits, err := plan(f, cmd.String(flagTo), names)
+	p, err := ops.PlanPromotion(f, cmd.String(flagTo), cmd.Args().Slice())
 	if err != nil {
 		return err
 	}
 
-	results := make([]Result, 0, len(plans))
-
-	var errs []error
-
-	for i, p := range plans {
-		if p.Changed() {
-			err := edits[i].Write()
-			if err != nil {
-				errs = append(errs, err)
-
-				continue
-			}
-
-			slog.DebugContext(ctx, "promoted", "site", p.Site, "image", p.Target.String(), "file", edits[i].Path)
-		}
-
-		results = append(results, Result{PromotionPlan: p, Changed: p.Changed()})
-	}
+	results, applyErr := ops.ApplyPromotion(ctx, p)
 
 	err = cmdutil.Print(cmd, results,
 		cmdutil.Column[Result]{Header: "site", Value: func(r Result) string { return r.Site }},
@@ -93,110 +66,7 @@ func run(ctx context.Context, cmd *cli.Command) error {
 		cmdutil.Column[Result]{Header: "image", Value: change},
 	)
 
-	return errors.Join(append(errs, err)...)
-}
-
-// plan loads the source and target site files of every named site, plans
-// their promotion and computes the edit of every target file that changes, so
-// that a site whose file cannot be edited refuses the promotion before any
-// file is written. It returns the plans and the edits, by index.
-func plan(f *cmdutil.Fleet, to string, names []string) ([]fleet.PromotionPlan, []values.ImageEdit, error) {
-	target, err := f.Fleet.Environment(to)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	source, err := f.Fleet.PromotionSource(to)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	sourceSites, err := selectSites(f, source, names)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	targetSites, err := selectSites(f, target, names)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	plans := make([]fleet.PromotionPlan, 0, len(names))
-	edits := make([]values.ImageEdit, 0, len(names))
-
-	var errs []error
-
-	for i, name := range names {
-		p, err := planSite(name, sourceSites[i], targetSites[i])
-		if err != nil {
-			errs = append(errs, err)
-
-			continue
-		}
-
-		var e values.ImageEdit
-
-		if p.Changed() {
-			e, err = values.PlanImage(targetSites[i].File(), p.Target.Repository, p.Target.Tag)
-			if err != nil {
-				errs = append(errs, err)
-
-				continue
-			}
-		}
-
-		plans = append(plans, p)
-		edits = append(edits, e)
-	}
-
-	if len(errs) > 0 {
-		return nil, nil, errors.Join(errs...)
-	}
-
-	return plans, edits, nil
-}
-
-// planSite plans one site from its own files only: the image a promotion
-// copies is the one the source's site file pins, not one from _shared.yaml.
-func planSite(name string, source, target fleet.Site) (fleet.PromotionPlan, error) {
-	sv, err := values.Load(source.File())
-	if err != nil {
-		return fleet.PromotionPlan{}, err
-	}
-
-	tv, err := values.Load(target.File())
-	if err != nil {
-		return fleet.PromotionPlan{}, err
-	}
-
-	return fleet.PlanPromotion(name, source.Env.Name, target.Env.Name, sv, tv)
-}
-
-// selectSites discovers the sites of env and picks the named ones.
-func selectSites(f *cmdutil.Fleet, env fleet.Environment, names []string) ([]fleet.Site, error) {
-	sites, err := f.Sites(env)
-	if err != nil {
-		return nil, err
-	}
-
-	selected, err := fleet.Select(sites, names)
-	if err != nil {
-		return nil, fmt.Errorf("environment %s: %w", env.Name, err)
-	}
-
-	return selected, nil
-}
-
-// unique drops repeated names, keeping the first of each.
-func unique(names []string) []string {
-	out := make([]string, 0, len(names))
-	for _, n := range names {
-		if !slices.Contains(out, n) {
-			out = append(out, n)
-		}
-	}
-
-	return out
+	return errors.Join(applyErr, err)
 }
 
 // change formats a result's image column: old -> new, or the image alone

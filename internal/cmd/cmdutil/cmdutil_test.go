@@ -12,6 +12,7 @@ import (
 
 	"github.com/rahacloud/wpfleet/internal/cmd/cmdutil"
 	"github.com/rahacloud/wpfleet/internal/domain/fleet"
+	"github.com/rahacloud/wpfleet/internal/ops"
 	"github.com/rahacloud/wpfleet/internal/testutil"
 )
 
@@ -158,10 +159,10 @@ func TestSelectSites(t *testing.T) {
 	testutil.Equal(t, "named", one[0].Name, "shop")
 
 	_, err = env.SelectSites([]string{"blog"}, true)
-	testutil.ErrorIs(t, err, cmdutil.ErrSitesAndAll)
+	testutil.ErrorIs(t, err, ops.ErrSitesAndAll)
 
 	_, err = env.SelectSites(nil, false)
-	testutil.ErrorIs(t, err, cmdutil.ErrNoSites)
+	testutil.ErrorIs(t, err, ops.ErrNoSites)
 
 	_, err = env.SelectSites([]string{"news"}, false)
 	testutil.ErrorIs(t, err, fleet.ErrUnknownSite)

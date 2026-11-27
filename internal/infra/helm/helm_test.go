@@ -115,13 +115,15 @@ func TestUpgradeInstall(t *testing.T) {
 	_, err = client.LiveManifest(site, namespace)
 	testutil.ErrorIs(t, err, helm.ErrReleaseNotFound)
 
-	rel, err := client.UpgradeInstall(ctx, site, namespace, testValues(), false)
+	rel, err := client.UpgradeInstall(ctx, site, namespace, testValues(),
+		helm.InstallOptions{Wait: false, Description: ""})
 	testutil.NoError(t, err)
 	testutil.DeepEqual(t, "install", []string{rel.Status, rel.ChartVersion, rel.Namespace},
 		[]string{"deployed", ch.Metadata.Version, namespace})
 	testutil.Equal(t, "install revision", rel.Revision, 1)
 
-	rel, err = client.UpgradeInstall(ctx, site, namespace, testValues(), true)
+	rel, err = client.UpgradeInstall(ctx, site, namespace, testValues(),
+		helm.InstallOptions{Wait: true, Description: "wpfleet 0123abc"})
 	testutil.NoError(t, err)
 	testutil.Equal(t, "upgrade revision", rel.Revision, 2)
 	testutil.True(t, "updated", !rel.Updated.IsZero())
@@ -129,6 +131,7 @@ func TestUpgradeInstall(t *testing.T) {
 	status, err := client.Status(site, namespace)
 	testutil.NoError(t, err)
 	testutil.Equal(t, "status revision", status.Revision, 2)
+	testutil.Equal(t, "description", status.Description, "wpfleet 0123abc")
 
 	live, err := client.LiveManifest(site, namespace)
 	testutil.NoError(t, err)
@@ -137,7 +140,8 @@ func TestUpgradeInstall(t *testing.T) {
 	testutil.NoError(t, err)
 	testutil.Equal(t, "live manifest of an unchanged release", live, rendered)
 
-	_, err = client.UpgradeInstall(ctx, site, namespace, []string{filepath.Join(t.TempDir(), "missing.yaml")}, false)
+	_, err = client.UpgradeInstall(ctx, site, namespace, []string{filepath.Join(t.TempDir(), "missing.yaml")},
+		helm.InstallOptions{Wait: false, Description: ""})
 	testutil.Error(t, err, "missing values file")
 }
 
@@ -149,7 +153,7 @@ func TestLiveManifestIsTheDeployedRevision(t *testing.T) {
 	client := helm.NewInMemory(embedded(t))
 	ctx := t.Context()
 
-	_, err := client.UpgradeInstall(ctx, site, namespace, testValues(), false)
+	_, err := client.UpgradeInstall(ctx, site, namespace, testValues(), helm.InstallOptions{Wait: false, Description: ""})
 	testutil.NoError(t, err)
 
 	deployed, err := client.LiveManifest(site, namespace)

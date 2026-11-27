@@ -1,4 +1,4 @@
-package admin
+package ops
 
 import (
 	"context"
@@ -9,23 +9,24 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// TokenBytes is how many random bytes a login token has.
-const TokenBytes = 32
+// LoginTokenBytes is how many random bytes a login token has.
+const LoginTokenBytes = 32
 
-// TTL is how long a login link works.
-const TTL = 60 * time.Second
+// LoginTTL is how long a login link works.
+const LoginTTL = 60 * time.Second
 
-// OptionPrefix starts the name of the option that holds a token's hash; the
+// LoginOptionPrefix starts the name of the option that holds a token's hash; the
 // chart's wpfleet-login.php looks it up by the same name.
-const OptionPrefix = "_wpfleet_login_"
+const LoginOptionPrefix = "_wpfleet_login_"
 
-// QueryParam is the query parameter of a login link.
-const QueryParam = "wpfleet-login"
+// LoginQueryParam is the query parameter of a login link.
+const LoginQueryParam = "wpfleet-login"
 
 // ErrNoAdmin is returned when a site has no user to log in as.
 var ErrNoAdmin = errors.New("the site has no administrator; name a user with --user")
@@ -43,10 +44,10 @@ type WP interface {
 	Output(ctx context.Context, pod string, args ...string) (string, error)
 }
 
-// NewToken reads TokenBytes from random and returns them as unpadded
+// NewLoginToken reads LoginTokenBytes from random and returns them as unpadded
 // URL-safe base64, 43 characters.
-func NewToken(random io.Reader) (string, error) {
-	b := make([]byte, TokenBytes)
+func NewLoginToken(random io.Reader) (string, error) {
+	b := make([]byte, LoginTokenBytes)
 
 	_, err := io.ReadFull(random, b)
 	if err != nil {
@@ -56,22 +57,22 @@ func NewToken(random io.Reader) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// TokenHash is the hex SHA-256 of a token, the only form of it the site
+// LoginTokenHash is the hex SHA-256 of a token, the only form of it the site
 // stores.
-func TokenHash(token string) string {
+func LoginTokenHash(token string) string {
 	sum := sha256.Sum256([]byte(token))
 
 	return hex.EncodeToString(sum[:])
 }
 
-// OptionName is the option that holds a token's login.
-func OptionName(token string) string {
-	return OptionPrefix + TokenHash(token)
+// LoginOptionName is the option that holds a token's login.
+func LoginOptionName(token string) string {
+	return LoginOptionPrefix + LoginTokenHash(token)
 }
 
-// Stored is what the option holds, as JSON that wp-cli turns into the PHP
+// StoredLogin is what the option holds, as JSON that wp-cli turns into the PHP
 // array the plugin reads.
-type Stored struct {
+type StoredLogin struct {
 	// Hash is the token's SHA-256, compared once more with hash_equals.
 	Hash string `json:"hash"`
 	// User is the ID of the user to log in.
@@ -81,15 +82,19 @@ type Stored struct {
 	Expires int64 `json:"expires"`
 }
 
-// Request is one login link to make.
-type Request struct {
+// LoginRequest is one login link to make.
+type LoginRequest struct {
 	// Pod is a running pod of the site.
 	Pod string
 	// BaseURL is the site's URL without a trailing slash, e.g.
 	// https://blog.example.com.
 	BaseURL string
-	// User is the login to log in as; empty picks the first administrator.
+	// User is the login, email or ID to log in as; empty picks one.
 	User string
+	// MatchEmail, when User is empty, prefers the WordPress user with this
+	// email if that user is an administrator (or a super admin on a
+	// multisite); otherwise the first administrator is picked as usual.
+	MatchEmail string
 }
 
 // Login is a link that was made.
@@ -100,21 +105,24 @@ type Login struct {
 	UserID int `json:"userId"`
 	// Expires is when it stops working.
 	Expires time.Time `json:"expires"`
+	// MatchedEmail says whether the user is the one LoginRequest.MatchEmail
+	// named. The CLI's JSON leaves it out.
+	MatchedEmail bool `json:"-"`
 }
 
-// Issue picks the user, stores a new token's hash in the site through wp-cli
+// IssueLogin picks the user, stores a new token's hash in the site through wp-cli
 // and returns the link. The token itself never reaches the site.
-func Issue(ctx context.Context, wp WP, req Request, random io.Reader) (Login, error) {
+func IssueLogin(ctx context.Context, wp WP, req LoginRequest, random io.Reader) (Login, error) {
 	// --url makes wp-cli act on the site that answers the link, which matters
 	// on a multisite network.
 	site := "--url=" + req.BaseURL + "/"
 
-	userID, err := pickUser(ctx, wp, req.Pod, site, req.User)
+	userID, matched, err := pickUser(ctx, wp, req.Pod, site, req)
 	if err != nil {
 		return Login{}, err
 	}
 
-	token, err := NewToken(random)
+	token, err := NewLoginToken(random)
 	if err != nil {
 		return Login{}, err
 	}
@@ -126,20 +134,22 @@ func Issue(ctx context.Context, wp WP, req Request, random io.Reader) (Login, er
 		return Login{}, err
 	}
 
-	expires := now.Add(TTL)
+	expires := now.Add(LoginTTL)
 
-	value, err := json.Marshal(Stored{Hash: TokenHash(token), User: userID, Expires: expires.Unix()})
+	value, err := json.Marshal(StoredLogin{Hash: LoginTokenHash(token), User: userID, Expires: expires.Unix()})
 	if err != nil {
 		return Login{}, fmt.Errorf("encoding the login: %w", err)
 	}
 
-	_, err = wp.Output(ctx, req.Pod, "option", "add", OptionName(token), string(value),
+	_, err = wp.Output(ctx, req.Pod, "option", "add", LoginOptionName(token), string(value),
 		"--format=json", "--autoload=no", site)
 	if err != nil {
 		return Login{}, fmt.Errorf("storing the login token: %w", err)
 	}
 
-	return Login{URL: req.BaseURL + "/?" + QueryParam + "=" + token, UserID: userID, Expires: expires}, nil
+	return Login{
+		URL: req.BaseURL + "/?" + LoginQueryParam + "=" + token, UserID: userID, Expires: expires, MatchedEmail: matched,
+	}, nil
 }
 
 // serverTime is the current time by the clock of the site's pod.
@@ -157,18 +167,63 @@ func serverTime(ctx context.Context, wp WP, pod, site string) (time.Time, error)
 	return time.Unix(sec, 0), nil
 }
 
-// pickUser returns the ID of login, or of the site's first administrator: on
-// a multisite network the first super admin, who may hold no role on the
-// main site at all.
-func pickUser(ctx context.Context, wp WP, pod, site, login string) (int, error) {
-	if login != "" {
-		if strings.HasPrefix(login, "-") {
-			return 0, fmt.Errorf("%w: %q", ErrBadUser, login)
+// pickUser returns the ID of the user to log in, and whether it is the one
+// req.MatchEmail named: req.User when given, else the administrator whose
+// email is req.MatchEmail, else the site's first administrator.
+func pickUser(ctx context.Context, wp WP, pod, site string, req LoginRequest) (int, bool, error) {
+	if req.User != "" {
+		if strings.HasPrefix(req.User, "-") {
+			return 0, false, fmt.Errorf("%w: %q", ErrBadUser, req.User)
 		}
 
-		return userID(ctx, wp, pod, site, login)
+		id, err := userID(ctx, wp, pod, site, req.User)
+
+		return id, false, err
 	}
 
+	if id, ok := adminByEmail(ctx, wp, pod, site, req.MatchEmail); ok {
+		return id, true, nil
+	}
+
+	id, err := firstAdmin(ctx, wp, pod, site)
+
+	return id, false, err
+}
+
+// adminByEmail returns the ID of the user with email when that user is an
+// administrator of the site or a super admin of its network. Any failure
+// (no such user, a wp-cli error) means no match: the caller falls back to
+// the first administrator, as the CLI does.
+func adminByEmail(ctx context.Context, wp WP, pod, site, email string) (int, bool) {
+	if email == "" || strings.HasPrefix(email, "-") || !strings.Contains(email, "@") {
+		return 0, false
+	}
+
+	id, err := userID(ctx, wp, pod, site, email)
+	if err != nil {
+		slog.DebugContext(ctx, "no WordPress user with the email", "err", err)
+
+		return 0, false
+	}
+
+	// The ID is a parsed positive integer, so it is safe in PHP code.
+	code := fmt.Sprintf(`$u = get_userdata(%d); echo ($u && (in_array("administrator", (array) $u->roles, true)`+
+		` || is_super_admin(%d))) ? "yes" : "no";`, id, id)
+
+	out, err := wp.Output(ctx, pod, "eval", code, site)
+	if err != nil || strings.TrimSpace(out) != "yes" {
+		slog.DebugContext(ctx, "the WordPress user with the email is not an administrator", "user", id, "err", err)
+
+		return 0, false
+	}
+
+	return id, true
+}
+
+// firstAdmin returns the ID of the site's first administrator: on a
+// multisite network the first super admin, who may hold no role on the main
+// site at all.
+func firstAdmin(ctx context.Context, wp WP, pod, site string) (int, error) {
 	multisite, err := wp.Output(ctx, pod, "eval", "echo is_multisite() ? 'yes' : 'no';", site)
 	if err != nil {
 		return 0, fmt.Errorf("checking for multisite: %w", err)

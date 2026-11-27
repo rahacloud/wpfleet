@@ -1,16 +1,13 @@
 package backup
 
 import (
-	"cmp"
 	"context"
 	"fmt"
-	"io"
 
 	"github.com/urfave/cli/v3"
 
 	"github.com/rahacloud/wpfleet/internal/cmd/cmdutil"
-	domain "github.com/rahacloud/wpfleet/internal/domain/backup"
-	"github.com/rahacloud/wpfleet/internal/infra/values"
+	"github.com/rahacloud/wpfleet/internal/ops"
 )
 
 // Flags of restore.
@@ -19,9 +16,6 @@ const (
 	flagUploads = "uploads"
 	flagYes     = "yes"
 )
-
-// stampLatest asks restore for the newest backup.
-const stampLatest = "latest"
 
 func restoreCommand(d Deps) *cli.Command {
 	//nolint:exhaustruct_v5 // urfave/cli commands are configured by their set fields
@@ -52,140 +46,26 @@ func (d Deps) restore(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	env, site, v := t.env, t.site, t.values
+	opts := ops.RestoreOptions{BackupOptions: d.Options(), Stamp: cmd.String(flagStamp), Uploads: cmd.Bool(flagUploads)}
 
-	bucket, err := d.Bucket(env.Fleet)
+	spec, err := ops.PlanRestore(ctx, t.env, t.site, opts)
 	if err != nil {
 		return err
 	}
 
-	prefix := domain.Prefix(env.Env.Namespace, site.Name)
+	Describe(cmd, spec)
 
-	runs, err := bucket.Backups(ctx, prefix)
+	err = Confirm(cmd, cmd.Bool(flagYes), fmt.Sprintf("Overwrite %s in %s?", t.site.Name, t.env.Env.Name))
 	if err != nil {
 		return err
 	}
 
-	stamp, err := resolveStamp(cmd.String(flagStamp), runs)
-	if err != nil {
-		return fmt.Errorf("%s in %s: %w", site.Name, env.Env.Name, err)
-	}
-
-	plan, err := domain.PlanRestore(prefix, runs, stamp, cmd.Bool(flagUploads))
-	if err != nil {
-		return fmt.Errorf("%s in %s: %w", site.Name, env.Env.Name, err)
-	}
-
-	spec, err := d.Spec(env, v, plan, bucket.Bucket())
-	if err != nil {
-		return err
-	}
-
-	cluster, err := ClusterOf(env)
-	if err != nil {
-		return err
-	}
-
-	err = besidePod(ctx, cluster, plan, site.Name)
-	if err != nil {
-		return err
-	}
-
-	errw := cmd.Root().ErrWriter
-	Describe(errw, env.Env.Name, spec)
-
-	err = Confirm(cmd, cmd.Bool(flagYes), fmt.Sprintf("Overwrite %s in %s?", site.Name, env.Env.Name))
-	if err != nil {
-		return err
-	}
-
-	return d.Restore(ctx, cluster, spec, cmd.Root().Writer, errw)
+	return ops.Restore(ctx, t.env, spec, d.Options(), cmdutil.ProgressTo(cmd))
 }
 
-// besidePod checks that a restore of the uploads has the site's running pod
-// to run beside: the pod holds the volume, and without one the Job would wait
-// until its deadline.
-func besidePod(ctx context.Context, cluster Cluster, plan domain.RestorePlan, site string) error {
-	if !plan.Uploads {
-		return nil
+// Describe tells the user on stderr what a restore is about to do.
+func Describe(cmd *cli.Command, spec ops.RestoreSpec) {
+	for _, line := range ops.DescribeRestore(spec) {
+		_, _ = fmt.Fprintln(cmd.Root().ErrWriter, line)
 	}
-
-	_, err := cluster.RunningPod(ctx, site)
-	if err != nil {
-		return fmt.Errorf("restoring the uploads runs beside the site's pod: %w", err)
-	}
-
-	return nil
-}
-
-// resolveStamp parses --stamp, where latest is the newest run with a dump.
-func resolveStamp(s string, runs []domain.Backup) (domain.Stamp, error) {
-	if s == stampLatest {
-		b, err := domain.Latest(runs)
-
-		return b.Stamp, err
-	}
-
-	return domain.ParseStamp(s)
-}
-
-// Spec builds the restore of plan into a site of env whose values (chart
-// defaults included) are v, reading from bucket. The endpoint is the site's
-// backup.s3.endpoint, the one its CronJob uses, else wpfleet.yaml's.
-func (d Deps) Spec(env *cmdutil.Env, v values.Values, plan domain.RestorePlan, bucket string) (RestoreSpec, error) {
-	site, err := domain.SiteOf(v)
-	if err != nil {
-		return RestoreSpec{}, fmt.Errorf("environment %s: %w", env.Env.Name, err)
-	}
-
-	tolerations, owner, err := PodOptions(v)
-	if err != nil {
-		return RestoreSpec{}, fmt.Errorf("%s in %s: %w", site.Name, env.Env.Name, err)
-	}
-
-	return RestoreSpec{
-		Name:         domain.JobName(site.FullName+"-restore", d.Now()),
-		Site:         site,
-		Plan:         plan,
-		Bucket:       bucket,
-		Endpoint:     cmp.Or(site.S3Endpoint, env.Config.Backup.S3.Endpoint),
-		Tolerations:  tolerations,
-		UploadsOwner: owner,
-	}, nil
-}
-
-// Describe tells the user what a restore is about to do.
-func Describe(w io.Writer, envName string, spec RestoreSpec) {
-	what := "the database"
-	if spec.Plan.Uploads {
-		what = "the database and the uploads"
-	}
-
-	_, _ = fmt.Fprintf(w, "Restoring %s of %s in %s from s3://%s/%s at %s.\n",
-		what, spec.Site.Name, envName, spec.Bucket, spec.Plan.Prefix, spec.Plan.Stamp)
-
-	if !spec.Plan.Exact() {
-		_, _ = fmt.Fprintf(w, "The uploads are the latest mirror wound back through %d later runs; "+
-			"files first uploaded after %s stay.\n", len(spec.Plan.Overlays), spec.Plan.Stamp)
-	}
-}
-
-// Restore creates the restore Job in the cluster and follows its logs into
-// w until it ends; it fails when the Job fails.
-func (d Deps) Restore(ctx context.Context, c Cluster, spec RestoreSpec, w, errw io.Writer) error {
-	job, err := c.CreateJob(ctx, RestoreJob(spec))
-	if err != nil {
-		return err
-	}
-
-	_, _ = fmt.Fprintf(errw, "Started Job %s in %s.\n", job.Name, c.Namespace())
-
-	err = Follow(ctx, c, job.Name, []string{ContainerFetch, ContainerImport}, w, d.Poll)
-	if err != nil {
-		return err
-	}
-
-	_, _ = fmt.Fprintf(errw, "Restored %s from %s.\n", spec.Site.Name, spec.Plan.Stamp)
-
-	return nil
 }

@@ -12,6 +12,8 @@ import (
 	"github.com/rahacloud/wpfleet/internal/cmd/admin"
 	"github.com/rahacloud/wpfleet/internal/cmd/cmdutil"
 	"github.com/rahacloud/wpfleet/internal/infra/kube/kubetest"
+	"github.com/rahacloud/wpfleet/internal/ops"
+	"github.com/rahacloud/wpfleet/internal/ops/opstest"
 	"github.com/rahacloud/wpfleet/internal/testutil"
 )
 
@@ -52,7 +54,7 @@ current-context: c
 type result struct {
 	stdout string
 	opened []string
-	wp     *fakeWP
+	wp     *opstest.WP
 }
 
 // runAdmin runs wpfleet with the global flags and admin with args, against a
@@ -69,7 +71,7 @@ func runAdminIn(t *testing.T, dir string, globals []string, args ...string) (res
 
 	pods := kubetest.New(namespace,
 		kubetest.RunningPod(namespace, "blog", "blog-0"), kubetest.RunningPod(namespace, "shop", "shop-0"))
-	res := result{stdout: "", opened: nil, wp: newFakeWP(singleSite())}
+	res := result{stdout: "", opened: nil, wp: opstest.NewWP(opstest.SingleSite())}
 	open := func(_ context.Context, url string) error {
 		res.opened = append(res.opened, url)
 
@@ -86,7 +88,7 @@ func runAdminIn(t *testing.T, dir string, globals []string, args ...string) (res
 		ErrWriter:      &bytes.Buffer{},
 		ExitErrHandler: func(context.Context, *cli.Command, error) {},
 		Commands: []*cli.Command{
-			admin.NewTestCommand(pods, res.wp, open, seed()),
+			admin.NewTestCommand(pods, res.wp, open, opstest.Seed()),
 		},
 	}
 
@@ -105,7 +107,7 @@ func runAdminIn(t *testing.T, dir string, globals []string, args ...string) (res
 func TestCommand(t *testing.T) {
 	t.Parallel()
 
-	token, err := admin.NewToken(seed())
+	token, err := ops.NewLoginToken(opstest.Seed())
 	testutil.NoError(t, err)
 
 	res, err := runAdmin(t, nil, "blog")
@@ -113,16 +115,16 @@ func TestCommand(t *testing.T) {
 	testutil.Equal(t, "stdout", res.stdout, "https://blog.staging.example.com/?wpfleet-login="+token+"\n")
 	testutil.Equal(t, "opened", len(res.opened), 0)
 	testutil.NotContains(t, "stdout", res.stdout, "secretpassword1")
-	testutil.Equal(t, "pod", res.wp.call(t, "option", "add")[0], "blog-0")
+	testutil.Equal(t, "pod", res.wp.Call(t, "option", "add")[0], "blog-0")
 
-	_, stored := res.wp.stored(t)
+	_, stored := res.wp.Stored(t)
 	testutil.Equal(t, "expiry", stored.Expires, int64(1_800_000_060))
 
 	res, err = runAdmin(t, nil, "--open", "--user", "editor", "shop")
 	testutil.NoError(t, err)
 	testutil.DeepEqual(t, "opened", res.opened, []string{"http://shop.example.com/?wpfleet-login=" + token})
-	testutil.Equal(t, "user", res.wp.call(t, "user", "get")[3], "editor")
-	testutil.Equal(t, "pod", res.wp.call(t, "user", "get")[0], "shop-0")
+	testutil.Equal(t, "user", res.wp.Call(t, "user", "get")[3], "editor")
+	testutil.Equal(t, "pod", res.wp.Call(t, "user", "get")[0], "shop-0")
 }
 
 // The host and the scheme come from the values over the chart's defaults, so
@@ -167,5 +169,5 @@ func TestCommandErrors(t *testing.T) {
 	testutil.Error(t, err, "unknown site")
 
 	_, err = runAdmin(t, nil, "--user=-x", "blog")
-	testutil.ErrorIs(t, err, admin.ErrBadUser)
+	testutil.ErrorIs(t, err, ops.ErrBadUser)
 }

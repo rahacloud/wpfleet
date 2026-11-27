@@ -2,15 +2,13 @@ package deploy
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
 	"github.com/urfave/cli/v3"
 
 	"github.com/rahacloud/wpfleet/internal/cmd/cmdutil"
-	"github.com/rahacloud/wpfleet/internal/domain/fleet"
-	"github.com/rahacloud/wpfleet/internal/infra/helm"
+	"github.com/rahacloud/wpfleet/internal/ops"
 )
 
 // DiffCommand returns wpfleet diff.
@@ -37,20 +35,7 @@ func diffCommand(releases releasesFunc) *cli.Command {
 }
 
 // Diff is what a deploy would change on one site.
-type Diff struct {
-	// Site is the site's name.
-	Site string `json:"site"`
-	// Env is the environment.
-	Env string `json:"env"`
-	// Installed says whether the site has a release.
-	Installed bool `json:"installed"`
-	// Changed says whether a deploy would change anything.
-	Changed bool `json:"changed"`
-	// Diff is the unified diff from the live manifest to the rendered one.
-	Diff string `json:"diff,omitempty"`
-	// Error is why the site could not be compared, when it could not.
-	Error string `json:"error,omitempty"`
-}
+type Diff = ops.SiteDiff
 
 // runDiff diffs the selected sites. It prints the unified diffs, or with
 // --output json one object per site, and returns exit code 1 when any site
@@ -71,73 +56,26 @@ func runDiff(ctx context.Context, cmd *cli.Command, releasesOf releasesFunc) err
 		return err
 	}
 
-	r := newRedactor()
-	diffs := make([]Diff, 0, len(sites))
-
-	var failed []string
-
-	for _, site := range sites {
-		d := diffSite(ctx, releases, r, env.Env.Name, site)
-		if d.Error != "" {
-			failed = append(failed, site.Name)
-		}
-
-		diffs = append(diffs, d)
-	}
-
-	err = writeDiffs(cmd.Root().Writer, cmd.Root().ErrWriter, format, diffs)
+	report, err := ops.Diff(ctx, env, sites, ops.DiffOptions{Releases: releases})
 	if err != nil {
 		return err
 	}
 
-	err = failure(failed, len(sites))
+	err = writeDiffs(cmd.Root().Writer, cmd.Root().ErrWriter, format, report.Diffs)
 	if err != nil {
 		return err
 	}
 
-	for _, d := range diffs {
-		if d.Changed {
-			return cli.Exit("", 1) //nolint:wrapcheck // an exit code without a message, by design
-		}
+	err = report.Err()
+	if err != nil {
+		return err
+	}
+
+	if report.Changed() {
+		return cli.Exit("", 1) //nolint:wrapcheck // an exit code without a message, by design
 	}
 
 	return nil
-}
-
-// diffSite compares one site's live release with its rendering.
-func diffSite(ctx context.Context, releases Releases, r redactor, envName string, site fleet.Site) Diff {
-	d := Diff{Site: site.Name, Env: envName, Installed: true, Changed: false, Diff: "", Error: ""}
-
-	rendered, err := releases.Render(ctx, site.Name, site.Env.Namespace, site.ValuesFiles)
-	if err != nil {
-		d.Error = err.Error()
-
-		return d
-	}
-
-	live, err := releases.LiveManifest(site.Name, site.Env.Namespace)
-
-	switch {
-	case errors.Is(err, helm.ErrReleaseNotFound):
-		d.Installed, live = false, ""
-	case err != nil:
-		d.Error = err.Error()
-
-		return d
-	}
-
-	prefix := envName + "/" + site.Name
-
-	d.Diff, err = unifiedDiff(r.normalize(live), r.normalize(rendered), prefix+" (live)", prefix+" (rendered)")
-	if err != nil {
-		d.Error = err.Error()
-
-		return d
-	}
-
-	d.Changed = d.Diff != ""
-
-	return d
 }
 
 // writeDiffs prints the diffs: the unified diffs one after another on out

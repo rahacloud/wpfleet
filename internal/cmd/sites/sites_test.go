@@ -155,7 +155,7 @@ func run(t *testing.T, cluster sites.Cluster, args ...string) (int, string, stri
 
 	releases := fakeReleases{blog: {
 		Name: blog, Namespace: staging, Revision: 3, Status: "deployed", ChartVersion: "0.1.0",
-		Updated: time.Date(2026, 11, 25, 9, 30, 0, 0, time.UTC),
+		Updated: time.Date(2026, 11, 25, 9, 30, 0, 0, time.UTC), Description: "",
 	}}
 
 	var stdout, stderr bytes.Buffer

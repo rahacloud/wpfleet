@@ -14,6 +14,7 @@ import (
 	"github.com/rahacloud/wpfleet/internal/infra/kube"
 	"github.com/rahacloud/wpfleet/internal/infra/kube/kubetest"
 	"github.com/rahacloud/wpfleet/internal/infra/s3"
+	"github.com/rahacloud/wpfleet/internal/ops"
 	"github.com/rahacloud/wpfleet/internal/testutil"
 )
 
@@ -35,8 +36,8 @@ func cronJob(namespace string) *batchv1.CronJob {
 		Namespace: namespace,
 		Spec: batchv1.CronJobSpec{JobTemplate: batchv1.JobTemplateSpec{Spec: batchv1.JobSpec{
 			Template: corev1.PodTemplateSpec{Spec: corev1.PodSpec{
-				InitContainers: []corev1.Container{{Name: backup.ContainerDump}},
-				Containers:     []corev1.Container{{Name: backup.ContainerUpload}},
+				InitContainers: []corev1.Container{{Name: ops.ContainerDump}},
+				Containers:     []corev1.Container{{Name: ops.ContainerUpload}},
 			}},
 		}}},
 	}
@@ -214,7 +215,7 @@ func TestRestoreUploads(t *testing.T) {
 
 	pod := h.Jobs(t, bt.Staging)[0].Spec.Template.Spec
 	testutil.Equal(t, "claim", pod.Volumes[1].PersistentVolumeClaim.ClaimName, "blog-uploads")
-	testutil.DeepEqual(t, "beside the site's pod", pod.Affinity, backup.BesideSite("blog"))
+	testutil.DeepEqual(t, "beside the site's pod", pod.Affinity, ops.BesideSite("blog"))
 
 	term := pod.Affinity.PodAffinity.RequiredDuringSchedulingIgnoredDuringExecution[0]
 	testutil.Equal(t, "same node", term.TopologyKey, "kubernetes.io/hostname")

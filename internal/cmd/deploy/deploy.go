@@ -4,17 +4,13 @@ package deploy
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"strconv"
-	"strings"
-	"time"
 
 	"github.com/urfave/cli/v3"
 
 	"github.com/rahacloud/wpfleet/internal/cmd/cmdutil"
 	"github.com/rahacloud/wpfleet/internal/domain/fleet"
-	"github.com/rahacloud/wpfleet/internal/infra/helm"
+	"github.com/rahacloud/wpfleet/internal/ops"
 )
 
 // Flag names of deploy and diff.
@@ -25,19 +21,10 @@ const (
 
 // ErrSitesFailed is returned when some of the sites of a deploy or a diff
 // failed; the others were still handled.
-var ErrSitesFailed = errors.New("sites failed")
+var ErrSitesFailed = ops.ErrSitesFailed
 
-// Releases is what deploy and diff need from Helm. *helm.Client implements it;
-// tests put a fake in its place.
-type Releases interface {
-	// Render renders a site's release without the cluster, hooks left out.
-	Render(ctx context.Context, site, namespace string, valuesFiles []string) (string, error)
-	// UpgradeInstall installs or upgrades a site's release.
-	UpgradeInstall(ctx context.Context, site, namespace string, valuesFiles []string, wait bool) (helm.Release, error)
-	// LiveManifest returns the manifest of a site's current release, hooks
-	// left out.
-	LiveManifest(site, namespace string) (string, error)
-}
+// Releases is what deploy and diff need from Helm.
+type Releases = ops.Releases
 
 // releasesFunc gives the Releases of an environment.
 type releasesFunc func(env *cmdutil.Env) (Releases, error)
@@ -87,23 +74,7 @@ func command(releases releasesFunc) *cli.Command {
 }
 
 // Result is the outcome of deploying one site.
-type Result struct {
-	// Site is the site's name.
-	Site string `json:"site"`
-	// Env is the environment.
-	Env string `json:"env"`
-	// Revision is the release's new revision; 0 when the deploy failed.
-	Revision int `json:"revision"`
-	// Status is Helm's status of the release, or failed.
-	Status string `json:"status"`
-	// Updated is when the revision was deployed.
-	Updated time.Time `json:"updated"`
-	// Error is why the deploy failed, when it did.
-	Error string `json:"error,omitempty"`
-}
-
-// statusFailed is the status of a site whose deploy returned an error.
-const statusFailed = "failed"
+type Result = ops.DeployResult
 
 // resultColumns are the columns of deploy's table.
 func resultColumns() []cmdutil.Column[Result] {
@@ -138,37 +109,19 @@ func runDeploy(ctx context.Context, cmd *cli.Command, releasesOf releasesFunc) e
 		return err
 	}
 
-	wait := cmd.Bool(flagWait)
-	results := make([]Result, 0, len(sites))
+	opts := ops.DeployOptions{Wait: cmd.Bool(flagWait), Releases: releases, Commit: nil}
 
-	var failed []string
-
-	for _, site := range sites {
-		if ctx.Err() != nil {
-			return fmt.Errorf("deploy stopped before %s: %w", site.Name, context.Cause(ctx))
-		}
-
-		_, _ = fmt.Fprintf(cmd.Root().ErrWriter, "deploying %s to %s\n", site.Name, env.Env.Name)
-
-		rel, err := releases.UpgradeInstall(ctx, site.Name, env.Env.Namespace, site.ValuesFiles, wait)
-
-		r := Result{
-			Site: site.Name, Env: env.Env.Name, Revision: rel.Revision, Status: rel.Status, Updated: rel.Updated, Error: "",
-		}
-		if err != nil {
-			r.Status, r.Error = statusFailed, err.Error()
-			failed = append(failed, site.Name)
-		}
-
-		results = append(results, r)
-	}
-
-	err = cmdutil.Print(cmd, results, resultColumns()...)
+	report, err := ops.Deploy(ctx, env, sites, opts, cmdutil.ProgressTo(cmd))
 	if err != nil {
 		return err
 	}
 
-	return failure(failed, len(sites))
+	err = cmdutil.Print(cmd, report.Results, resultColumns()...)
+	if err != nil {
+		return err
+	}
+
+	return report.Err()
 }
 
 // open opens the environment of --env and selects the sites the arguments
@@ -185,13 +138,4 @@ func open(cmd *cli.Command) (*cmdutil.Env, []fleet.Site, error) {
 	}
 
 	return env, sites, nil
-}
-
-// failure is the error of a run in which the named sites failed, or nil.
-func failure(failed []string, total int) error {
-	if len(failed) == 0 {
-		return nil
-	}
-
-	return fmt.Errorf("%w: %d of %d (%s)", ErrSitesFailed, len(failed), total, strings.Join(failed, ", "))
 }

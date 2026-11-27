@@ -158,6 +158,20 @@ type Release struct {
 	ChartVersion string `json:"chartVersion"`
 	// Updated is when the revision was deployed.
 	Updated time.Time `json:"updated"`
+	// Description is Helm's description of the revision; wpfleet's deploys
+	// write "wpfleet <commit>" there. The CLI's JSON leaves it out, so its
+	// output keeps the shape it had before deploys recorded commits.
+	Description string `json:"-"`
+}
+
+// InstallOptions are the options of UpgradeInstall.
+type InstallOptions struct {
+	// Wait waits until the resources are ready; without it, only for the
+	// hooks.
+	Wait bool
+	// Description is stored as the new revision's description; empty keeps
+	// Helm's own ("Install complete", "Upgrade complete").
+	Description string
 }
 
 // configurer makes the action configuration for a namespace.
@@ -224,10 +238,9 @@ func (c *Client) Render(ctx context.Context, site, namespace string, valuesFiles
 }
 
 // UpgradeInstall installs the release of site, or upgrades it when it exists,
-// from the values files. With wait it waits until the resources are ready;
-// without, only for the hooks.
+// from the values files, as opts says.
 func (c *Client) UpgradeInstall(
-	ctx context.Context, site, namespace string, valuesFiles []string, wait bool,
+	ctx context.Context, site, namespace string, valuesFiles []string, opts InstallOptions,
 ) (Release, error) {
 	vals, err := values.Load(valuesFiles...)
 	if err != nil {
@@ -240,7 +253,7 @@ func (c *Client) UpgradeInstall(
 	}
 
 	strategy := helmkube.HookOnlyStrategy
-	if wait {
+	if opts.Wait {
 		strategy = helmkube.StatusWatcherStrategy
 	}
 
@@ -258,6 +271,7 @@ func (c *Client) UpgradeInstall(
 		install.WaitStrategy = strategy
 		install.Timeout = c.Timeout
 		install.ServerSideApply = true
+		install.Description = opts.Description
 
 		rel, err = install.RunWithContext(ctx, c.chart, vals.Tree())
 	case err != nil:
@@ -270,6 +284,7 @@ func (c *Client) UpgradeInstall(
 		upgrade.ServerSideApply = "auto"
 		upgrade.ResetValues = true
 		upgrade.MaxHistory = maxHistory
+		upgrade.Description = opts.Description
 
 		rel, err = upgrade.RunWithContext(ctx, site, c.chart, vals.Tree())
 	}
@@ -337,11 +352,13 @@ func summarize(rel releasei.Releaser) (Release, error) {
 		Status:       "",
 		ChartVersion: "",
 		Updated:      time.Time{},
+		Description:  "",
 	}
 
 	if r.Info != nil {
 		out.Status = r.Info.Status.String()
 		out.Updated = r.Info.LastDeployed
+		out.Description = r.Info.Description
 	}
 
 	if r.Chart != nil && r.Chart.Metadata != nil {

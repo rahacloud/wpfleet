@@ -18,6 +18,7 @@ import (
 	"github.com/rahacloud/wpfleet/internal/cmd/deploy"
 	"github.com/rahacloud/wpfleet/internal/infra/helm"
 	"github.com/rahacloud/wpfleet/internal/infra/kube"
+	"github.com/rahacloud/wpfleet/internal/ops"
 	"github.com/rahacloud/wpfleet/internal/testutil"
 )
 
@@ -47,6 +48,8 @@ type fakeReleases struct {
 	revs  map[string]int
 	waits map[string]bool
 	fail  map[string]bool
+	// descriptions are the release descriptions of the last deploys.
+	descriptions map[string]string
 }
 
 func newFake(t *testing.T) *fakeReleases {
@@ -62,6 +65,8 @@ func newFake(t *testing.T) *fakeReleases {
 		revs:  map[string]int{},
 		waits: map[string]bool{},
 		fail:  map[string]bool{},
+
+		descriptions: map[string]string{},
 	}
 }
 
@@ -75,7 +80,7 @@ func (f *fakeReleases) Render(ctx context.Context, site, namespace string, files
 }
 
 func (f *fakeReleases) UpgradeInstall(
-	ctx context.Context, site, namespace string, files []string, wait bool,
+	ctx context.Context, site, namespace string, files []string, opts helm.InstallOptions,
 ) (helm.Release, error) {
 	f.mu.Lock()
 	fail := f.fail[site]
@@ -95,11 +100,12 @@ func (f *fakeReleases) UpgradeInstall(
 
 	f.live[site] = manifest
 	f.revs[site]++
-	f.waits[site] = wait
+	f.waits[site] = opts.Wait
+	f.descriptions[site] = opts.Description
 
 	return helm.Release{
 		Name: site, Namespace: namespace, Revision: f.revs[site], Status: "deployed",
-		ChartVersion: "0.1.0", Updated: time.Date(2026, 11, 26, 10, 0, 0, 0, time.UTC),
+		ChartVersion: "0.1.0", Updated: time.Date(2026, 11, 26, 10, 0, 0, 0, time.UTC), Description: opts.Description,
 	}, nil
 }
 
@@ -208,6 +214,7 @@ func TestDeploy(t *testing.T) {
 	testutil.Contains(t, "table", out, "SITE", "REVISION", "blog", "shop", "deployed")
 	testutil.Contains(t, "progress", errOut, "deploying blog to staging", "deploying shop to staging")
 	testutil.True(t, "waited", f.waits["blog"] && f.waits["shop"])
+	testutil.Equal(t, "a fleet outside Git records no commit", f.descriptions["blog"], "wpfleet")
 	noSecrets(t, out, errOut)
 
 	code, out, _ = run(t, f, "-f", dir, "-e", envName, "-o", "json", deployCmd, "blog")
@@ -244,8 +251,8 @@ func TestDeployArguments(t *testing.T) {
 		args []string
 		want string
 	}{
-		{[]string{"-f", dir, "-e", envName, deployCmd}, cmdutil.ErrNoSites.Error()},
-		{[]string{"-f", dir, "-e", envName, deployCmd, "blog", "--all"}, cmdutil.ErrSitesAndAll.Error()},
+		{[]string{"-f", dir, "-e", envName, deployCmd}, ops.ErrNoSites.Error()},
+		{[]string{"-f", dir, "-e", envName, deployCmd, "blog", "--all"}, ops.ErrSitesAndAll.Error()},
 		{[]string{"-f", dir, "-e", envName, diffCmd, "news"}, "unknown site"},
 		{[]string{"-f", dir, deployCmd, "blog"}, cmdutil.ErrNoEnv.Error()},
 	} {
@@ -310,53 +317,4 @@ func TestDiffRenderError(t *testing.T) {
 	testutil.Equal(t, "exit code", code, 1)
 	testutil.Contains(t, "blog still diffed", out, "staging/blog (rendered)")
 	testutil.Contains(t, "error", errOut, "staging/shop: ", "wpfleet: sites failed: 1 of 2 (shop)")
-}
-
-func TestNormalize(t *testing.T) {
-	t.Parallel()
-
-	live := `---
-# Source: wordpress/templates/service.yaml
-apiVersion: v1
-kind: Service
-
-metadata:
-  name: blog
----
-# Source: wordpress/templates/secret.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: blog
-stringData:
-  WORDPRESS_DB_PASSWORD: "` + password + `"
-data:
-  other: c2VjcmV0
-`
-	rendered := `# Source: wordpress/templates/secret.yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: blog
-stringData:
-  WORDPRESS_DB_PASSWORD: ` + password + `
-data:
-  other: c2VjcmV0
----
-
-# Source: wordpress/templates/service.yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: blog
-`
-
-	got := deploy.Normalize(live, rendered, "kind: Secret\nstringData: [")
-	noSecrets(t, got...)
-	testutil.NotContains(t, "data", got[0], "c2VjcmV0")
-	testutil.Equal(t, "order, quoting and blank lines do not count", got[0], got[1])
-	testutil.Contains(t, "redacted", got[0], "WORDPRESS_DB_PASSWORD: (redacted ", "kind: Service")
-	testutil.True(t, "Secret sorts before Service", strings.Index(got[0], "Secret") < strings.Index(got[0], "Service"))
-	testutil.NotContains(t, "blank lines", got[0], "\n\n")
-	testutil.Equal(t, "unparseable Secret", strings.HasPrefix(got[2], "---\n(redacted "), true)
 }

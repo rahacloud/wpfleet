@@ -1,4 +1,4 @@
-package admin_test
+package ops_test
 
 import (
 	"encoding/json"
@@ -9,12 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rahacloud/wpfleet/internal/cmd/admin"
+	"github.com/rahacloud/wpfleet/internal/ops"
+	"github.com/rahacloud/wpfleet/internal/ops/opstest"
 	"github.com/rahacloud/wpfleet/internal/testutil"
 )
 
 // plugin is the chart's must-use plugin.
-const plugin = "../../../charts/wordpress/files/wpfleet-login.php"
+const plugin = "../../charts/wordpress/files/wpfleet-login.php"
 
 // outcome is what the plugin did in the harness.
 type outcome struct {
@@ -28,26 +29,27 @@ func (o outcome) loggedIn() bool {
 		slices.Contains(o.Log, "redirect:https://blog.example.com/wp-admin/")
 }
 
-// issued is a login that Issue stored through the fake wp-cli.
+// issued is a login that IssueLogin stored through the fake wp-cli.
 type issued struct {
 	token, name, value string
 }
 
-// issue runs Issue with the site's clock at now, with the fake site's
+// issue runs IssueLogin with the site's clock at now, with the fake site's
 // administrator being admin.
 func issue(t *testing.T, now time.Time, adminID string) issued {
 	t.Helper()
 
-	answers := singleSite()
+	answers := opstest.SingleSite()
 	answers["user list"] = adminID
-	answers[clockKey] = strconv.FormatInt(now.Unix(), 10)
-	wp := newFakeWP(answers)
+	answers[opstest.ClockKey] = strconv.FormatInt(now.Unix(), 10)
+	wp := opstest.NewWP(answers)
 
-	login, err := admin.Issue(t.Context(), wp, admin.Request{Pod: blogPod, BaseURL: blogURL, User: ""}, seed())
+	login, err := ops.IssueLogin(t.Context(), wp,
+		ops.LoginRequest{Pod: blogPod, BaseURL: blogURL, User: "", MatchEmail: ""}, opstest.Seed())
 	testutil.NoError(t, err)
 
 	_, token, _ := strings.Cut(login.URL, "wpfleet-login=")
-	c := wp.call(t, "option", "add")
+	c := wp.Call(t, "option", "add")
 
 	return issued{token: token, name: c[3], value: c[4]}
 }
@@ -66,7 +68,7 @@ func runPlugin(t *testing.T, php, token, name, value string) outcome {
 	return o
 }
 
-// TestPlugin drives wpfleet-login.php with what Issue stores, through stubs of
+// TestPlugin drives wpfleet-login.php with what IssueLogin stores, through stubs of
 // the WordPress functions it calls. It needs php on the PATH.
 func TestPlugin(t *testing.T) {
 	t.Parallel()
@@ -91,7 +93,7 @@ func TestPlugin(t *testing.T) {
 	o = runPlugin(t, php, "not-a-token", other.name, other.value)
 	testutil.Equal(t, "a malformed token does nothing", len(o.Log), 0)
 
-	expired := issue(t, now.Add(-2*admin.TTL), "7")
+	expired := issue(t, now.Add(-2*ops.LoginTTL), "7")
 	o = runPlugin(t, php, expired.token, expired.name, expired.value)
 	testutil.Equal(t, "an expired token does nothing", len(o.Log), 0)
 	testutil.Equal(t, "an expired token is deleted", len(o.Options), 0)
@@ -107,7 +109,7 @@ func TestPlugin(t *testing.T) {
 	o = runPlugin(t, php, gone.token, gone.name, gone.value)
 	testutil.Equal(t, "a deleted user does nothing", len(o.Log), 0)
 
-	var tampered admin.Stored
+	var tampered ops.StoredLogin
 	testutil.NoError(t, json.Unmarshal([]byte(valid.value), &tampered))
 	tampered.Hash = strings.Repeat("0", 64)
 	value, err := json.Marshal(tampered)

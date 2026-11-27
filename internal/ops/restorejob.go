@@ -1,4 +1,4 @@
-package backup
+package ops
 
 import (
 	"encoding/json"
@@ -20,6 +20,12 @@ import (
 const (
 	ContainerFetch  = "fetch"
 	ContainerImport = "import"
+)
+
+// Names of the backup CronJob's containers, in the order they run.
+const (
+	ContainerDump   = "dump"
+	ContainerUpload = "upload"
 )
 
 // Limits of the restore Job.
@@ -61,6 +67,8 @@ echo "imported $DUMP into $DB_NAME"
 type RestoreSpec struct {
 	// Name is the Job's name.
 	Name string
+	// Env is the name of the environment restored into.
+	Env string
 	// Site is the site restored into.
 	Site domain.Site
 	// Plan says what is restored, and from where in the bucket.
@@ -92,13 +100,13 @@ func RestoreJob(spec RestoreSpec) batchv1.Job {
 	}
 
 	//nolint:exhaustruct_v5 // an empty emptyDir is the default one
-	volumes := []corev1.Volume{volume("work", corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}})}
+	volumes := []corev1.Volume{podVolume("work", corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}})}
 
 	var affinity *corev1.Affinity
 
 	if spec.Plan.Uploads {
 		//nolint:exhaustruct_v5 // a claim name is all a PVC volume needs
-		volumes = append(volumes, volume("uploads", corev1.VolumeSource{
+		volumes = append(volumes, podVolume("uploads", corev1.VolumeSource{
 			PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{ClaimName: spec.Site.Claim},
 		}))
 		affinity = BesideSite(spec.Site.Name)
@@ -158,9 +166,9 @@ func BesideSite(site string) *corev1.Affinity {
 
 // fetchContainer copies the backup out of S3 with the chart's rclone image.
 func fetchContainer(spec RestoreSpec) corev1.Container {
-	mounts := []corev1.VolumeMount{mount("work", workDir, false)}
+	mounts := []corev1.VolumeMount{volumeMount("work", workDir, false)}
 	if spec.Plan.Uploads {
-		mounts = append(mounts, mount("uploads", uploadsDir, false))
+		mounts = append(mounts, volumeMount("uploads", uploadsDir, false))
 	}
 
 	overlays := make([]string, 0, len(spec.Plan.Overlays))
@@ -174,13 +182,13 @@ func fetchContainer(spec RestoreSpec) corev1.Container {
 		Image:   spec.Site.RcloneImage,
 		Command: []string{"sh", "-ec", fetchScript},
 		Env: append([]corev1.EnvVar{
-			env("BUCKET", spec.Bucket),
-			env("DUMP", spec.Plan.Dump),
-			env("UPLOADS", strconv.FormatBool(spec.Plan.Uploads)),
-			env("CURRENT", domain.CurrentKey(spec.Plan.Prefix)),
-			env("OVERLAYS", strings.Join(overlays, " ")),
-			env("UPLOADS_OWNER", spec.UploadsOwner),
-			env("HOME", "/tmp"),
+			envVar("BUCKET", spec.Bucket),
+			envVar("DUMP", spec.Plan.Dump),
+			envVar("UPLOADS", strconv.FormatBool(spec.Plan.Uploads)),
+			envVar("CURRENT", domain.CurrentKey(spec.Plan.Prefix)),
+			envVar("OVERLAYS", strings.Join(overlays, " ")),
+			envVar("UPLOADS_OWNER", spec.UploadsOwner),
+			envVar("HOME", "/tmp"),
 		}, rcloneEnv(spec)...),
 		//nolint:exhaustruct_v5 // the backup CronJob's requests and limits
 		Resources: corev1.ResourceRequirements{
@@ -203,44 +211,48 @@ func importContainer(spec RestoreSpec) corev1.Container {
 		Image:   spec.Site.MariaDBImage,
 		Command: []string{"bash", "-ec", importScript},
 		Env: []corev1.EnvVar{
-			env("DB_HOST", spec.Site.DBHost),
-			env("DB_PORT", spec.Site.DBPort),
-			env("DB_NAME", spec.Site.DBName),
-			env("DB_USER", spec.Site.DBUser),
-			env("DUMP", spec.Plan.Dump),
-			secretEnv("MYSQL_PWD", spec.Site.Secret, domain.DBPasswordKey),
+			envVar("DB_HOST", spec.Site.DBHost),
+			envVar("DB_PORT", spec.Site.DBPort),
+			envVar("DB_NAME", spec.Site.DBName),
+			envVar("DB_USER", spec.Site.DBUser),
+			envVar("DUMP", spec.Plan.Dump),
+			secretEnvVar("MYSQL_PWD", spec.Site.Secret, domain.DBPasswordKey),
 		},
-		VolumeMounts: []corev1.VolumeMount{mount("work", workDir, true)},
+		VolumeMounts: []corev1.VolumeMount{volumeMount("work", workDir, true)},
 	}
 }
 
 // rcloneEnv configures rclone's s3 remote the way the backup CronJob does.
 func rcloneEnv(spec RestoreSpec) []corev1.EnvVar {
 	return []corev1.EnvVar{
-		env("RCLONE_CONFIG_S3_TYPE", "s3"),
-		env("RCLONE_CONFIG_S3_PROVIDER", "Other"),
-		env("RCLONE_CONFIG_S3_ENDPOINT", spec.Endpoint),
-		secretEnv("RCLONE_CONFIG_S3_ACCESS_KEY_ID", spec.Site.S3Secret, "access-key-id"),
-		secretEnv("RCLONE_CONFIG_S3_SECRET_ACCESS_KEY", spec.Site.S3Secret, "secret-access-key"),
+		envVar("RCLONE_CONFIG_S3_TYPE", "s3"),
+		envVar("RCLONE_CONFIG_S3_PROVIDER", "Other"),
+		envVar("RCLONE_CONFIG_S3_ENDPOINT", spec.Endpoint),
+		secretEnvVar("RCLONE_CONFIG_S3_ACCESS_KEY_ID", spec.Site.S3Secret, "access-key-id"),
+		secretEnvVar("RCLONE_CONFIG_S3_SECRET_ACCESS_KEY", spec.Site.S3Secret, "secret-access-key"),
 	}
 }
 
-func env(name, value string) corev1.EnvVar {
+// envVar is a plain environment variable.
+func envVar(name, value string) corev1.EnvVar {
 	return corev1.EnvVar{Name: name, Value: value, ValueFrom: nil}
 }
 
-func secretEnv(name, secret, key string) corev1.EnvVar {
+// secretEnvVar is an environment variable from a Secret's key.
+func secretEnvVar(name, secret, key string) corev1.EnvVar {
 	//nolint:exhaustruct_v5 // a secret key reference is the only source used
 	return corev1.EnvVar{Name: name, ValueFrom: &corev1.EnvVarSource{
 		SecretKeyRef: &corev1.SecretKeySelector{Name: secret, Key: key},
 	}}
 }
 
-func volume(name string, src corev1.VolumeSource) corev1.Volume {
+// podVolume is a named volume.
+func podVolume(name string, src corev1.VolumeSource) corev1.Volume {
 	return corev1.Volume{Name: name, VolumeSource: src}
 }
 
-func mount(name, path string, readOnly bool) corev1.VolumeMount {
+// volumeMount mounts a volume at path.
+func volumeMount(name, path string, readOnly bool) corev1.VolumeMount {
 	//nolint:exhaustruct_v5 // a plain mount
 	return corev1.VolumeMount{Name: name, MountPath: path, ReadOnly: readOnly}
 }

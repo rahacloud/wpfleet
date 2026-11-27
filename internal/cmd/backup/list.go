@@ -2,26 +2,19 @@ package backup
 
 import (
 	"context"
-	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/urfave/cli/v3"
 
 	"github.com/rahacloud/wpfleet/internal/cmd/cmdutil"
-	domain "github.com/rahacloud/wpfleet/internal/domain/backup"
+	"github.com/rahacloud/wpfleet/internal/ops"
 )
 
 // timeLayout is how list prints times.
 const timeLayout = "2006-01-02 15:04 MST"
 
 // Row is one line of backup list.
-type Row struct {
-	domain.Backup
-
-	// Expires is when the CronJob deletes the run, by backup.keepDays.
-	Expires time.Time `json:"expires"`
-}
+type Row = ops.BackupRow
 
 func listCommand(d Deps) *cli.Command {
 	//nolint:exhaustruct_v5 // urfave/cli commands are configured by their set fields
@@ -39,26 +32,9 @@ func (d Deps) list(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	env, site, v := t.env, t.site, t.values
-
-	keep, err := strconv.Atoi(v.String(domain.ValueKeepDays))
-	if err != nil {
-		return fmt.Errorf("%s in %s: %s: %w", site.Name, env.Env.Name, domain.ValueKeepDays, err)
-	}
-
-	bucket, err := d.Bucket(env.Fleet)
+	rows, err := ops.ListBackups(ctx, t.env, t.site, d.Options())
 	if err != nil {
 		return err
-	}
-
-	runs, err := bucket.Backups(ctx, domain.Prefix(env.Env.Namespace, site.Name))
-	if err != nil {
-		return err
-	}
-
-	rows := make([]Row, 0, len(runs))
-	for _, b := range runs {
-		rows = append(rows, Row{Backup: b, Expires: domain.Expires(b.Stamp, keep)})
 	}
 
 	return cmdutil.Print(cmd, rows,

@@ -18,6 +18,7 @@ import (
 	"github.com/rahacloud/wpfleet/internal/infra/assets"
 	"github.com/rahacloud/wpfleet/internal/infra/values"
 	"github.com/rahacloud/wpfleet/internal/infra/wpcli"
+	"github.com/rahacloud/wpfleet/internal/ops"
 )
 
 // Flags of copy.
@@ -117,14 +118,14 @@ func (c copier) copy(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	wp, cluster, err := c.ready(ctx, f, dst)
+	wp, err := c.ready(ctx, f, dst)
 	if err != nil {
 		return err
 	}
 
 	errw, out := cmd.Root().ErrWriter, cmd.Root().Writer
 
-	backup.Describe(errw, to, spec)
+	backup.Describe(cmd, spec)
 	_, _ = fmt.Fprintf(errw, "Then moving %s to %s.\n", src.host, dst.host)
 
 	err = backup.Confirm(cmd, cmd.Bool(flagYes), fmt.Sprintf("Overwrite %s in %s with %s's?", name, to, from))
@@ -132,7 +133,7 @@ func (c copier) copy(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	err = c.d.Restore(ctx, cluster, spec, out, errw)
+	err = ops.Restore(ctx, dst.env, spec, c.d.Options(), cmdutil.ProgressTo(cmd))
 	if err != nil {
 		return err
 	}
@@ -140,28 +141,21 @@ func (c copier) copy(ctx context.Context, cmd *cli.Command) error {
 	return rehost(ctx, wp, src, dst, multisite, out, errw)
 }
 
-// ready checks, before anything is overwritten, that the target has a running
-// pod to move the host in and that wp-cli is at hand, and returns the runner
-// and the target's cluster.
-//
-//nolint:ireturn // the cluster is a fake in tests
-func (c copier) ready(ctx context.Context, f *cmdutil.Fleet, dst side) (*wpcli.Runner, backup.Cluster, error) {
-	cluster, err := backup.ClusterOf(dst.env)
+// ready checks, before anything is overwritten, that the target's cluster
+// can create the restore Job, that the target has a running pod to move the
+// host in and that wp-cli is at hand, and returns the runner.
+func (c copier) ready(ctx context.Context, f *cmdutil.Fleet, dst side) (*wpcli.Runner, error) {
+	cluster, err := ops.JobClusterOf(dst.env)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	_, err = cluster.RunningPod(ctx, dst.site.Name)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	wp, err := c.d.WPCLI(ctx, f, cluster)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return wp, cluster, nil
+	return c.d.WPCLI(ctx, f, cluster)
 }
 
 // environments returns --from and --to, refusing the same environment twice
@@ -201,7 +195,7 @@ func (c copier) open(f *cmdutil.Fleet, envName, name string) (side, error) {
 		return side{}, fmt.Errorf("%s in %s: %w", name, envName, err)
 	}
 
-	u, err := cmdutil.SiteURL(v)
+	u, err := ops.SiteURL(v)
 	if err != nil {
 		return side{}, fmt.Errorf("%s in %s: %w", name, envName, err)
 	}
@@ -214,32 +208,32 @@ func (c copier) open(f *cmdutil.Fleet, envName, name string) (side, error) {
 // target is a multisite.
 func (c copier) plan(
 	ctx context.Context, f *cmdutil.Fleet, src, dst side, uploads bool,
-) (backup.RestoreSpec, bool, error) {
-	bucket, err := c.d.Bucket(f)
+) (ops.RestoreSpec, bool, error) {
+	bucket, err := ops.Bucket(f, c.d.Getenv)
 	if err != nil {
-		return backup.RestoreSpec{}, false, err
+		return ops.RestoreSpec{}, false, err
 	}
 
 	prefix := domain.Prefix(src.env.Env.Namespace, src.site.Name)
 
 	runs, err := bucket.Backups(ctx, prefix)
 	if err != nil {
-		return backup.RestoreSpec{}, false, err
+		return ops.RestoreSpec{}, false, err
 	}
 
 	latest, err := domain.Latest(runs)
 	if err != nil {
-		return backup.RestoreSpec{}, false, fmt.Errorf("%s in %s: %w", src.site.Name, src.env.Env.Name, err)
+		return ops.RestoreSpec{}, false, fmt.Errorf("%s in %s: %w", src.site.Name, src.env.Env.Name, err)
 	}
 
 	plan, err := domain.PlanRestore(prefix, runs, latest.Stamp, uploads)
 	if err != nil {
-		return backup.RestoreSpec{}, false, err
+		return ops.RestoreSpec{}, false, err
 	}
 
-	spec, err := c.d.Spec(dst.env, dst.values, plan, bucket.Bucket())
+	spec, err := ops.NewRestoreSpec(dst.env, dst.values, plan, bucket.Bucket(), c.d.Now())
 	if err != nil {
-		return backup.RestoreSpec{}, false, err
+		return ops.RestoreSpec{}, false, err
 	}
 
 	return spec, domain.Multisite(dst.values), nil

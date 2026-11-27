@@ -2,17 +2,11 @@ package backup
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/urfave/cli/v3"
 
-	domain "github.com/rahacloud/wpfleet/internal/domain/backup"
-)
-
-// Names of the backup CronJob's containers, in the order they run.
-const (
-	ContainerDump   = "dump"
-	ContainerUpload = "upload"
+	"github.com/rahacloud/wpfleet/internal/cmd/cmdutil"
+	"github.com/rahacloud/wpfleet/internal/ops"
 )
 
 func runCommand(d Deps) *cli.Command {
@@ -31,29 +25,7 @@ func (d Deps) run(ctx context.Context, cmd *cli.Command) error {
 		return err
 	}
 
-	env, site, v := t.env, t.site, t.values
+	_, err = ops.RunBackup(ctx, t.env, t.site, d.Options(), cmdutil.ProgressTo(cmd))
 
-	s, err := domain.SiteOf(v)
-	if err != nil {
-		return fmt.Errorf("environment %s: %w", env.Env.Name, err)
-	}
-
-	cronJob := s.FullName + "-backup"
-
-	job, err := env.Kube.JobFromCronJob(ctx, cronJob, domain.JobName(cronJob, d.Now()))
-	if err != nil {
-		return fmt.Errorf("%s in %s (is backup.enabled set?): %w", site.Name, env.Env.Name, err)
-	}
-
-	errw := cmd.Root().ErrWriter
-	_, _ = fmt.Fprintf(errw, "Started Job %s in %s.\n", job.Name, env.Kube.Namespace())
-
-	err = Follow(ctx, env.Kube, job.Name, []string{ContainerDump, ContainerUpload}, cmd.Root().Writer, d.Poll)
-	if err != nil {
-		return err
-	}
-
-	_, _ = fmt.Fprintf(errw, "Backed up %s in %s.\n", site.Name, env.Env.Name)
-
-	return nil
+	return err
 }

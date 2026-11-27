@@ -12,6 +12,7 @@ import (
 	"github.com/rahacloud/wpfleet/internal/cmd/promote"
 	"github.com/rahacloud/wpfleet/internal/domain/fleet"
 	"github.com/rahacloud/wpfleet/internal/infra/values"
+	"github.com/rahacloud/wpfleet/internal/ops"
 	"github.com/rahacloud/wpfleet/internal/testutil"
 )
 
@@ -183,7 +184,7 @@ func TestPromoteRefusals(t *testing.T) {
 	testutil.ErrorIs(t, err, fleet.ErrUnknownEnvironment)
 
 	_, err = run(t, "-f", dir, "promote", "--to", "production")
-	testutil.ErrorIs(t, err, cmdutil.ErrNoSites)
+	testutil.ErrorIs(t, err, ops.ErrNoSites)
 
 	_, err = run(t, "-f", dir, "promote", "shop")
 	testutil.Error(t, err, "a missing --to")
