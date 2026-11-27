@@ -134,6 +134,106 @@ The mirror is as of the latest run. Restoring the uploads of an older run copies
 
 A host change needs more than `search-replace`. BeTheme keeps its page builder data base64-encoded in the post meta `mfn-page-items`, and WPML caches its switcher templates as objects of classes wp-cli does not load. `internal/infra/assets/rehost-extra.php` decodes and rewrites the first and deletes the second; `copy` runs it with `wp eval-file` after `search-replace "$old" "$new" --all-tables-with-prefix --skip-columns=guid --precise`. On a multisite it adds `--network` and `--url=<source URL>/`: the imported database still names the source's domain in `wp_blogs` and `wp_site` while the target's `DOMAIN_CURRENT_SITE` names its own, so wp-cli can only load the network by the source's URL until the domain is replaced. The source and target hosts come from each site's values over the chart's defaults. The fix-up's tests run it in PHP against stubbed WordPress functions.
 
+## The server
+
+`wpfleet serve` runs the same operations as the CLI behind a web UI, for people who sign in with single sign-on and have no kubeconfig. It runs as one Deployment inside the cluster it manages, in the client's cluster and never on ours, behind that cluster's ingress. It is the most powerful thing in those namespaces: it can deploy every site and log in to every site's admin. So access control, CSRF protection and an audit log are part of its first version, not later work.
+
+### Git stays the source of truth
+
+The server works on a clone of the fleet repository, not on files of its own. Every change of state is a commit: `promote` in the UI edits the site file as the CLI does, commits it with the signed-in person as the author and the server's bot identity as the committer, and pushes it to the configured branch. A deploy in the UI deploys what that branch holds at that moment, never an uncommitted file, so the cluster can always be explained by a commit. Every deploy, from the CLI too, stores the fleet's commit in the Helm release's description (`wpfleet <sha>`, with `-dirty` when the CLI deployed from a tree with uncommitted changes), so the UI shows which commit each site runs.
+
+- **Pull:** the server fetches the branch every `server.git.pollInterval` (default 1 minute) and at once on a push webhook (`POST /hooks/git`, signed with HMAC-SHA256 by `WPFLEET_GIT_WEBHOOK_SECRET`, in the GitHub and Gitea header format). It hard-resets its clone to the remote; nobody edits that clone by hand.
+- **Push:** one write at a time. When the push is refused because the branch moved, the server resets to the new remote head, plans the edit again, and pushes once more; a second refusal fails the action and changes nothing.
+- **Auth:** an SSH deploy key (`WPFLEET_GIT_SSH_KEY`, a file path) or an HTTPS token (`WPFLEET_GIT_TOKEN`), never from `wpfleet.yaml`.
+- **Not in the server's first version:** opening a pull request instead of pushing (each Git host has its own API), `build` (it needs a Docker daemon or an in-cluster builder) and `copy`.
+
+### Single sign-on and access
+
+Sign-in is OpenID Connect with any provider that publishes discovery (Keycloak, Dex, Azure AD, Google; GitHub through Dex): the authorization code flow with PKCE, `state` and `nonce`. The ID token's groups claim (`server.oidc.groupsClaim`, default `groups`) and the email are kept in the session; nothing else about the person is stored. The session is a cookie encrypted with AES-GCM under `WPFLEET_SESSION_KEY` (32 bytes, base64), `HttpOnly`, `Secure`, `SameSite=Lax`, and it ends after `server.session.maxAge` (default 8 hours), when the groups are read again at the next sign-in. Every request that changes something is a `POST` with a CSRF token bound to the session.
+
+Access is denied unless a rule allows it. A rule names a group, the environments and the sites it covers (exact names or `*`), and the permissions it allows:
+
+| Permission | Allows |
+| --- | --- |
+| `view` | the site in lists, its details, its diff, its history and its backups |
+| `deploy` | `promote` into the environment, and `deploy` there |
+| `login` | the one-time admin login |
+| `backup` | `backup run` |
+| `restore` | `backup restore`, which overwrites the site's database and, if asked, its uploads |
+
+Every permission includes `view`. A person's permissions are the union of every rule that matches one of their groups; a person with none gets a page that says so and nothing else. `promote` checks `deploy` on the target environment and `view` on the source. The rules are evaluated by pure code in `internal/domain/access`, with a test for each row of the table.
+
+### The admin login
+
+"Open admin" in the UI makes the same one-time link as `wpfleet admin` and redirects the browser to it, so the link never shows on the screen. With `server.admin.matchEmail` (on by default) it logs in as the WordPress user whose email is the signed-in person's, when one exists and is an administrator, so the site's own records name the right person; otherwise it logs in as the CLI would. The audit record says which WordPress user it was.
+
+### Audit
+
+Every action, allowed or refused, writes one JSON line to stdout with `"audit": true`: the time, the person's email and groups, the action, the environment and site, the commit (for promote and deploy), the result, and for a login the WordPress user. The cluster's log collection keeps them; the server keeps no database. Changes of state are in Git as well, so the history of a site file is the history of its promotions. The server also records a Kubernetes Event on the site's Deployment for deploy, login, backup and restore, so `kubectl describe` shows them.
+
+### The UI
+
+The UI is for people who run a site's content, not its infrastructure: an editor or a marketing team signs in with the company account, sees only their sites, and opens each one's admin with one click, without a WordPress password. So each page leads with the action and says it in their words: "Open admin", "Publish staging to live" (promote and deploy), "Back up now", "Restore yesterday's backup"; the engineering terms (release, revision, commit, drift, diff) stay on the detail pages of people with `deploy`. A button that a person's permissions do not allow is not shown at all. Every text goes through a message catalogue, with English and Persian (right to left) in the first version, chosen from the browser's language and changeable per person.
+
+Server-rendered HTML from [templ](https://templ.guide) components, with [htmx](https://htmx.org) for partial updates; both are compiled into the binary and nothing loads from a CDN. Pages:
+
+- **Fleet:** a grid of sites and environments: the image tag in each environment (so a pending promotion stands out), readiness, the commit each runs, drift (the live release differs from what the branch renders) and the last backup.
+- **Site:** for one site in one environment: host, image, pods, node, release history with commits, the Git history of its site file, the diff against the cluster, its backups, and the buttons the person's permissions allow.
+- **Action:** deploy, backup and restore stream their progress and the Job logs over server-sent events; a restore asks for the site's name to be typed before it starts.
+
+### Operations shared with the CLI
+
+The logic of each command moves from `internal/cmd/<verb>` into `internal/ops`, as functions that take the environment, the sites and options and return typed results, with progress through a callback rather than a writer. The CLI commands become flag parsing and printing around them, and the server calls the same functions, so the two can never behave differently. One operation runs per site and environment at a time across the server; a second one is refused with the name of the action in progress.
+
+### Running it
+
+```text
+internal/cmd/serve/        the serve command: flags, wiring, graceful shutdown
+internal/ops/              deploy, diff, promote, admin, backup run/list/restore, as functions
+internal/domain/access/    rules, permissions and their evaluation (pure)
+internal/domain/audit/     the audit record (pure)
+internal/infra/gitrepo/    clone, fetch, hard reset, commit and push with go-git
+internal/infra/oidc/       discovery, the code flow with PKCE, ID token verification
+internal/infra/session/    the encrypted session cookie and CSRF tokens
+internal/infra/web/        echo routes, handlers, server-sent events, /healthz, /readyz, /metrics
+internal/infra/web/ui/     templ components and the embedded static files (htmx, CSS)
+deployments/helm/wpfleet/  the chart that runs the server
+build/package/Dockerfile   the image: the static binary on a distroless base, as a non-root user
+```
+
+`wpfleet.yaml` gains a `server` section:
+
+```yaml
+server:
+  listen: ":8080"
+  metricsListen: ":9090"
+  publicURL: https://wpfleet.example.com   # the OIDC redirect is <publicURL>/auth/callback
+  git:
+    url: git@github.com:example/fleet.git
+    branch: main
+    pollInterval: 1m
+    committer: {name: wpfleet, email: wpfleet@example.com}
+  oidc:
+    issuer: https://sso.example.com/realms/main
+    clientID: wpfleet                       # the secret comes from WPFLEET_OIDC_CLIENT_SECRET
+    groupsClaim: groups
+  session:
+    maxAge: 8h
+  admin:
+    matchEmail: true
+  access:
+    - group: platform
+      environments: ["*"]
+      sites: ["*"]
+      allow: [view, deploy, login, backup, restore]
+    - group: shop-team
+      environments: [development, staging]
+      sites: [shop]
+      allow: [view, login]
+```
+
+In the cluster, an environment with an empty `kubeconfig` uses the pod's ServiceAccount. The chart in `deployments/helm/wpfleet` makes the Deployment (one replica, because pushes and the per-site locks are in memory), the Service, the Ingress with its TLS secret, the ServiceAccount, and a Role with its RoleBinding in each site namespace listed in its values, since a tenant often holds only namespace admin and cannot make a ClusterRole. The Role allows what Helm and the operations touch there: Secrets, ConfigMaps, Services, PersistentVolumeClaims, Deployments, Ingresses, CronJobs, Jobs, Pods with `exec` and `log`, and Events. The OIDC client secret, the session key, the Git credentials and the S3 keys come from one Secret made by hand.
+
 ## Not in the first version
 
-An operator with a `WordPressSite` resource, a web UI, image builds inside the cluster (BuildKit or Kaniko), single sign-on with OIDC, plugin vulnerability reports, and restore tests on a schedule. The CLI comes first, so that its model can settle before it becomes an API.
+An operator with a `WordPressSite` resource, image builds inside the cluster (BuildKit or Kaniko), plugin vulnerability reports, restore tests on a schedule, and in the server: pull requests instead of pushes, `build`, `copy`, and more than one replica. The CLI came first so that its model could settle; the server is a second front end on the same operations, not a new model.
