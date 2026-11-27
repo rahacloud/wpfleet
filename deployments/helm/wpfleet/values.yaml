@@ -57,6 +57,9 @@ config:
       issuer: https://sso.example.com/realms/main
       clientID: wpfleet
       groupsClaim: groups
+      # Keep an email claim that comes without email_verified. Leave it off
+      # for a provider whose users can edit their email (Azure AD).
+      assumeEmailVerified: false
     session:
       maxAge: 8h
     admin:

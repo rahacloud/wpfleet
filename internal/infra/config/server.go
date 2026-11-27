@@ -90,6 +90,11 @@ type OIDC struct {
 	ClientID string `json:"clientID" koanf:"clientID"`
 	// GroupsClaim is the ID token claim that lists the person's groups.
 	GroupsClaim string `json:"groupsClaim" koanf:"groupsClaim"`
+	// AssumeEmailVerified keeps an email claim that comes without
+	// email_verified, for a provider whose email people cannot change. Off
+	// by default: such an email is dropped and never matches a WordPress
+	// user.
+	AssumeEmailVerified bool `json:"assumeEmailVerified" koanf:"assumeEmailVerified"`
 }
 
 // Session configures the session cookie. Its key comes from EnvSessionKey.
@@ -133,7 +138,7 @@ func DefaultServer() Server {
 			PollInterval: time.Minute,
 			Committer:    Committer{Name: "wpfleet", Email: ""},
 		},
-		OIDC:    OIDC{Issuer: "", ClientID: "", GroupsClaim: "groups"},
+		OIDC:    OIDC{Issuer: "", ClientID: "", GroupsClaim: "groups", AssumeEmailVerified: false},
 		Session: Session{MaxAge: 8 * time.Hour}, //nolint:mnd // the design's default sign-in length
 		Admin:   Admin{MatchEmail: true},
 		Access:  nil,

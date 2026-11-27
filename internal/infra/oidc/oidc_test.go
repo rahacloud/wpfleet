@@ -42,6 +42,8 @@ func config(issuer string) oidc.Config {
 		RedirectURL:  redirectURL,
 		GroupsClaim:  "",
 		Scopes:       nil,
+
+		AssumeEmailVerified: false,
 	}
 }
 
@@ -302,22 +304,27 @@ func TestEmailVerified(t *testing.T) {
 	tests := []struct {
 		name     string
 		verified any
+		assume   bool
 		want     string
 	}{
-		{"absent", nil, editorEmail},
-		{"true", true, editorEmail},
-		{"string true", "true", editorEmail},
-		{"false", false, ""},
-		{"string false", "false", ""},
-		{"garbage", "maybe", ""},
-		{"number", 1, ""},
+		// A provider that never sends email_verified may let people set
+		// any email, so absent is unverified unless the provider is trusted.
+		{"absent", nil, false, ""},
+		{"absent and assumed", nil, true, editorEmail},
+		{"true", true, false, editorEmail},
+		{"string true", "true", false, editorEmail},
+		{"false", false, false, ""},
+		{"false though assumed", false, true, ""},
+		{"string false", "false", false, ""},
+		{"garbage", "maybe", false, ""},
+		{"number", 1, false, ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			server, provider := setup(t)
+			server, provider := setup(t, func(c *oidc.Config) { c.AssumeEmailVerified = tt.assume })
 			claims := oidctest.Claims{claimSub: "user-1", claimEmail: editorEmail}
 
 			if tt.verified != nil {

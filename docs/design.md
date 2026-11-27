@@ -164,7 +164,7 @@ The server works on a clone of the fleet repository, not on files of its own. Ev
 
 ### Single sign-on and access
 
-Sign-in is OpenID Connect with any provider that publishes discovery (Keycloak, Dex, Azure AD, Google; GitHub through Dex): the authorization code flow with PKCE, `state` and `nonce`. The ID token's subject, email, name and groups claim (`server.oidc.groupsClaim`, default `groups`) are kept in the session; nothing else about the person is stored. An email the provider marks as not verified (`email_verified: false`) is dropped, so it never matches a WordPress user. The session is a cookie encrypted with AES-GCM under `WPFLEET_SESSION_KEY` (32 bytes, base64), `HttpOnly`, `Secure`, `SameSite=Lax`, and it ends after `server.session.maxAge` (default 8 hours), when the groups are read again at the next sign-in. Every request that changes something is a `POST` with a CSRF token bound to the session.
+Sign-in is OpenID Connect with any provider that publishes discovery (Keycloak, Dex, Azure AD, Google; GitHub through Dex): the authorization code flow with PKCE, `state` and `nonce`. The ID token's subject, email, name and groups claim (`server.oidc.groupsClaim`, default `groups`) are kept in the session; nothing else about the person is stored. An email the provider marks as not verified (`email_verified: false`) is dropped, so it never matches a WordPress user, and so is an email without `email_verified` at all: Azure AD never sends the claim and, in some tenants, lets people edit their email, so with `matchEmail` a person could set a colleague's address and be logged in to a site as that colleague's WordPress user, under that colleague's name in the site's records. `server.oidc.assumeEmailVerified` (off by default) keeps such an email, for a provider whose email claim people cannot change. The session is a cookie encrypted with AES-GCM under `WPFLEET_SESSION_KEY` (32 bytes, base64), `HttpOnly`, `Secure`, `SameSite=Lax`, and it ends after `server.session.maxAge` (default 8 hours), when the groups are read again at the next sign-in. Every request that changes something is a `POST` with a CSRF token bound to the session.
 
 Access is denied unless a rule allows it. A rule names a group, the environments and the sites it covers (exact names or `*`), and the permissions it allows:
 
@@ -241,6 +241,7 @@ server:
     issuer: https://sso.example.com/realms/main
     clientID: wpfleet                       # the secret comes from WPFLEET_OIDC_CLIENT_SECRET
     groupsClaim: groups
+    assumeEmailVerified: false              # keep an email that has no email_verified
   session:
     maxAge: 8h
   admin:

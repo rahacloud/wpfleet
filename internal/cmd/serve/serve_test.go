@@ -151,7 +151,8 @@ func TestServeSignsInAndServesTheFleet(t *testing.T) {
 
 	provider := oidctest.New(t, clientID, clientSecret)
 	provider.SignInAs(oidctest.Claims{
-		"sub": "u1", "email": "admin@example.com", "name": "An Admin", "groups": []string{groupPlatform, "other"},
+		"sub": "u1", "email": "admin@example.com", "email_verified": true, "name": "An Admin",
+		"groups": []string{groupPlatform, "other"},
 	})
 
 	gitURL := remote(t, fleetFiles())
@@ -310,6 +311,7 @@ func TestOnlyRuleGroupsReachTheSession(t *testing.T) {
 	p, err := oidc.New(t.Context(), oidc.Config{
 		Issuer: server.Issuer(), ClientID: clientID, ClientSecret: clientSecret,
 		RedirectURL: "http://wpfleet.example.com/auth/callback", GroupsClaim: "", Scopes: nil,
+		AssumeEmailVerified: false,
 	})
 	testutil.NoError(t, err)
 

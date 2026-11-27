@@ -137,6 +137,7 @@ func run(ctx context.Context, log *slog.Logger, o options) error {
 	provider, err := oidc.New(ctx, oidc.Config{
 		Issuer: srv.OIDC.Issuer, ClientID: srv.OIDC.ClientID, ClientSecret: secrets.OIDCClientSecret,
 		RedirectURL: srv.RedirectURL(), GroupsClaim: srv.OIDC.GroupsClaim, Scopes: nil,
+		AssumeEmailVerified: srv.OIDC.AssumeEmailVerified,
 	})
 	if err != nil {
 		return err

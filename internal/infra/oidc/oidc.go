@@ -73,6 +73,12 @@ type Config struct {
 	// Scopes are the requested scopes; empty is DefaultScopes. openid is
 	// always requested.
 	Scopes []string
+	// AssumeEmailVerified keeps an email claim that comes without
+	// email_verified. Off, such an email is dropped, because some providers
+	// (Azure AD among them) never send email_verified and let people edit
+	// their email, which would then match another person's WordPress user.
+	// Turn it on only for a provider whose email claim people cannot change.
+	AssumeEmailVerified bool
 }
 
 // Validate reports a configuration that cannot work.
@@ -95,10 +101,11 @@ func (c Config) Validate() error {
 
 // Provider is a discovered provider and this server's client at it.
 type Provider struct {
-	oauth       oauth2.Config
-	verifier    *gooidc.IDTokenVerifier
-	clientID    string
-	groupsClaim string
+	oauth          oauth2.Config
+	verifier       *gooidc.IDTokenVerifier
+	clientID       string
+	groupsClaim    string
+	assumeVerified bool
 }
 
 // New validates c and reads the provider's discovery document. The HTTP
@@ -140,8 +147,9 @@ func New(ctx context.Context, c Config) (*Provider, error) {
 		verifier: provider.Verifier(&gooidc.Config{ //nolint:exhaustruct_v5 // the zero values keep every check on
 			ClientID: c.ClientID,
 		}),
-		clientID:    c.ClientID,
-		groupsClaim: groupsClaim,
+		clientID:       c.ClientID,
+		groupsClaim:    groupsClaim,
+		assumeVerified: c.AssumeEmailVerified,
 	}, nil
 }
 
@@ -156,8 +164,9 @@ func (p *Provider) AuthURL(state, nonce, verifier string) string {
 // that is missing, not signed by the provider's keys, issued by another
 // issuer, for another audience (or, with several audiences, to another
 // authorized party), expired, without a subject, or whose nonce is not nonce.
-// An email the provider marks as not verified is dropped, so it never
-// matches a WordPress user.
+// An email the provider marks as not verified, or does not mark at all
+// unless Config.AssumeEmailVerified says so, is dropped, so it never matches
+// a WordPress user.
 func (p *Provider) Exchange(ctx context.Context, code, verifier, nonce string) (access.Identity, error) {
 	var none access.Identity
 
@@ -223,19 +232,20 @@ func (p *Provider) identity(idToken *gooidc.IDToken) (access.Identity, error) {
 	}
 
 	email := std.Email
-	if !verified(std.EmailVerified) {
+	if !verified(std.EmailVerified, p.assumeVerified) {
 		email = ""
 	}
 
 	return access.Identity{Subject: idToken.Subject, Email: email, Name: std.Name, Groups: groups}, nil
 }
 
-// verified reads email_verified. Absent counts as verified, since several
-// providers (Azure AD among them) never send it; false, as a boolean or as the
-// string some providers send, does not.
-func verified(raw json.RawMessage) bool {
+// verified reads email_verified: true, as a boolean or as the string some
+// providers send, is verified. Absent (or null) is verified only when
+// assumed, since a provider that never sends the claim may let people set
+// any email; anything else is not.
+func verified(raw json.RawMessage, assumed bool) bool {
 	if len(raw) == 0 || string(raw) == "null" {
-		return true
+		return assumed
 	}
 
 	var b bool
