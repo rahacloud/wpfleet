@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Applies the GitHub settings that wpfleet needs once it is public: security
 # features, labels, repository settings and rulesets. docs/going-public.md says
-# when to run it. Every step reads the current state first and creates or
-# updates to match, so running it again changes nothing.
+# when to run it. Every write sets the full desired state (labels and rulesets
+# are looked up by name first), so running it again changes nothing. At the
+# end it reads each ruleset back and checks who may bypass it.
 #
 # Usage: hack/go-public.sh [--dry-run] [--allow-private] [--repo OWNER/NAME]
 #
@@ -180,16 +181,25 @@ done
 # --- Rulesets ----------------------------------------------------------------
 #
 # Work goes straight to main, so no ruleset asks for a pull request. The ID of
-# the repository's admin role, for bypass_actors, is 5; the GitHub Actions
-# app, which reports the checks, is integration 15368.
+# the repository's admin role, for bypass_actors, is 5. An organization owner
+# who is not a collaborator of the repository holds no repository role, so the
+# rulesets that admins bypass name OrganizationAdmin as well (its actor_id is
+# 1 by convention; GitHub ignores it). The GitHub Actions app, which reports
+# the checks, is integration 15368.
+
+# ruleset_id NAME prints the ID of the repository ruleset NAME, or nothing.
+ruleset_id() {
+	local existing
+	if existing="$(read_api "repos/$repo/rulesets?includes_parents=false" --paginate)"; then
+		jq -rs --arg name "$1" '[.[][] | select(.name == $name and .source_type == "Repository") | .id] | first // empty' <<<"$existing"
+	fi
+}
 
 # ruleset NAME JSON creates the repository ruleset NAME, or replaces the one
 # that already has that name.
 ruleset() {
-	local name="$1" body="$2" id="" existing
-	if existing="$(read_api "repos/$repo/rulesets?includes_parents=false" --paginate)"; then
-		id="$(jq -rs --arg name "$name" '[.[][] | select(.name == $name and .source_type == "Repository") | .id] | first // empty' <<<"$existing")"
-	fi
+	local name="$1" body="$2" id
+	id="$(ruleset_id "$name")"
 	if [[ -n "$id" ]]; then
 		write_api PUT "repos/$repo/rulesets/$id" "$body"
 	else
@@ -211,7 +221,7 @@ ruleset "main: no force push or deletion" '{
 }'
 
 # A required check stops a push whose commit has not passed it yet, which is
-# every direct push to main. Admins bypass this ruleset so the maintainers can
+# every direct push to main. Admins and owners bypass this ruleset so the maintainers can
 # keep committing straight to main; it holds for everyone else, and a pull
 # request merges only once these jobs pass. The contexts are the job names in
 # .github/workflows/ci.yml (CI) and security.yml (Security); rename a job and
@@ -222,7 +232,8 @@ ruleset "main: CI and Security pass" '{
   "target": "branch",
   "enforcement": "active",
   "bypass_actors": [
-    {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}
+    {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"},
+    {"actor_id": 1, "actor_type": "OrganizationAdmin", "bypass_mode": "always"}
   ],
   "conditions": {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
   "rules": [
@@ -260,14 +271,16 @@ ruleset "tags v*: no update or deletion" '{
   ]
 }'
 
-# Pushing a v* tag publishes a release, so only admins may create one.
+# Pushing a v* tag publishes a release, so only admins and owners may create
+# one.
 log "Ruleset: only admins create release tags"
 ruleset "tags v*: admins create" '{
   "name": "tags v*: admins create",
   "target": "tag",
   "enforcement": "active",
   "bypass_actors": [
-    {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}
+    {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"},
+    {"actor_id": 1, "actor_type": "OrganizationAdmin", "bypass_mode": "always"}
   ],
   "conditions": {"ref_name": {"include": ["refs/tags/v*"], "exclude": []}},
   "rules": [
@@ -275,8 +288,41 @@ ruleset "tags v*: admins create" '{
   ]
 }'
 
+# --- Check the rulesets -------------------------------------------------------
+#
+# The maintainer who runs this must still be able to push to main and push a
+# release tag, and nobody may bypass the two rulesets without bypass actors.
+# GitHub answers current_user_can_bypass for the user gh is logged in as.
+
 if "$dry_run"; then
 	log "Dry run: nothing was changed"
-else
-	log "Done. Check Settings > Rules and Settings > Code security of $repo."
+	exit 0
 fi
+
+log "Who may bypass each ruleset, as $(gh api user --jq .login)"
+# name|expected current_user_can_bypass
+expected=(
+	"main: no force push or deletion|never"
+	"main: CI and Security pass|always"
+	"tags v*: no update or deletion|never"
+	"tags v*: admins create|always"
+)
+failed=false
+for entry in "${expected[@]}"; do
+	IFS='|' read -r name want <<<"$entry"
+	id="$(ruleset_id "$name")"
+	got="missing"
+	if [[ -n "$id" ]]; then
+		got="$(gh api "repos/$repo/rulesets/$id" --jq '.current_user_can_bypass // "unknown"')"
+	fi
+	printf '%-34s %-8s (want %s)\n' "$name" "$got" "$want" >&2
+	if [[ "$got" != "$want" ]]; then
+		failed=true
+	fi
+done
+if "$failed"; then
+	echo "go-public: a ruleset's bypass is not what it should be; fix it under Settings > Rules before pushing to main" >&2
+	exit 1
+fi
+
+log "Done. Check Settings > Rules and Settings > Code security of $repo."

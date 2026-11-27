@@ -84,7 +84,7 @@ From this moment the CodeQL and Scorecard workflows run, and zizmor uploads its 
 
 ## 6. The GitHub settings
 
-`hack/go-public.sh` applies the settings with `gh api`. It reads the current state first and creates or updates to match, so it is safe to run again. Look at what it will do, then run it:
+`hack/go-public.sh` applies the settings with `gh api`. Every write sets the full desired state, and labels and rulesets are looked up by name first, so it is safe to run again. Look at what it will do, then run it:
 
 ```bash
 hack/go-public.sh --dry-run
@@ -94,9 +94,11 @@ hack/go-public.sh
 It turns on Dependabot alerts and security updates, private vulnerability reporting, secret scanning with push protection; sets the description and topics; creates the labels that the issue forms, Dependabot and `.github/release.yml` use; and creates four rulesets:
 
 - `main` cannot be deleted or force-pushed, with no bypass.
-- `main` needs the jobs of the CI and Security workflows to pass. Repository admins bypass it, because the maintainers commit straight to `main`, and a required check refuses every direct push whose commit has not passed it yet. For everyone else, a pull request merges only once the checks pass.
+- `main` needs the jobs of the CI and Security workflows to pass. Repository admins and organization owners bypass it, because the maintainers commit straight to `main`, and a required check refuses every direct push whose commit has not passed it yet. For everyone else, a pull request merges only once the checks pass.
 - A `v*` tag cannot be moved or deleted, with no bypass: people may already have pulled what it published.
-- Only repository admins can create a `v*` tag, since pushing one publishes a release.
+- Only repository admins and organization owners can create a `v*` tag, since pushing one publishes a release.
+
+Organization owners are named on their own because an owner who is not a collaborator of the repository holds no repository role, so the admin role alone would not let them bypass. At the end the script reads each ruleset back and prints `current_user_can_bypass` for the person running it: it expects `always` for the two rulesets with a bypass and `never` for the two without, and exits with an error otherwise. Do not push to `main` until it passes; if it fails, fix the bypass list under **Settings > Rules**.
 
 The script refuses to run while the repository is private: rulesets and secret scanning are not available on a private repository on the organization's plan. Then check **Settings > Rules** and **Settings > Code security** by hand, and do what the API cannot: upload a social preview image (1280 by 640 pixels, from `docs/images/banner.svg`) under **Settings > General**.
 
