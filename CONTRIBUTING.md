@@ -58,7 +58,7 @@ The subject line starts with a [Conventional Commits](https://www.conventionalco
 fix: keep the site's salts when a deploy finds no release
 ```
 
-Use `feat`, `fix`, `docs`, `test`, `refactor`, `build`, `ci` or `chore`, with a scope in brackets when it helps (`build(deps):`). The release notes leave out `docs`, `test`, `ci` and `chore` commits, so pick the prefix that matches what a user of wpfleet would notice.
+Use `feat`, `fix`, `sec`, `perf`, `docs`, `test`, `refactor`, `build`, `ci` or `chore`, with a scope in brackets when it helps (`build(deps):`). The release notes leave out `docs`, `test`, `ci` and `chore` commits, except dependency bumps such as `ci(deps):`, so pick the prefix that matches what a user of wpfleet would notice. [docs/releasing.md](docs/releasing.md) lists which prefix lands under which heading of the release notes.
 
 The body explains why, in prose paragraphs: the problem, the reason for this solution, and what you found on the way, including what reflects badly on the change. The diff already shows what changed.
 
@@ -70,4 +70,4 @@ Keep a pull request to one subject. Fill in the template: what the change does, 
 
 ## Releases
 
-A maintainer releases by pushing a `v*` tag. GoReleaser builds the binaries, the archives and the checksums, and writes the release notes from the commit subjects, which is why the prefix matters. When release notes are generated on GitHub instead, `.github/release.yml` groups the pull requests by their labels.
+A maintainer releases by pushing a `v*` tag, as [docs/releasing.md](docs/releasing.md) describes. GoReleaser builds the binaries, the archives, the checksums and the image, and writes the release notes from the commit subjects, which is why the prefix matters. When release notes are generated on GitHub instead, `.github/release.yml` groups the pull requests by their labels.
