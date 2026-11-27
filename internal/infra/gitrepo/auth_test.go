@@ -93,3 +93,28 @@ func TestAuthToken(t *testing.T) {
 	_, err = gitrepo.AuthFor(config("git@git.example.com:example/fleet.git", "", "secret-token"))
 	testutil.ErrorIs(t, err, gitrepo.ErrInvalid)
 }
+
+// Basic auth over plain http would send the token in clear text, so only a
+// loopback address, which never leaves the machine, may take it.
+func TestAuthTokenNeedsTLS(t *testing.T) {
+	t.Parallel()
+
+	_, err := gitrepo.AuthFor(config("http://git.example.com/example/fleet.git", "", "secret-token"))
+	testutil.ErrorIs(t, err, gitrepo.ErrInvalid)
+
+	for _, url := range []string{
+		"http://localhost:3000/example/fleet.git",
+		"http://127.0.0.1:3000/example/fleet.git",
+		"http://[::1]:3000/example/fleet.git",
+	} {
+		auth, err := gitrepo.AuthFor(config(url, "", "secret-token"))
+		testutil.NoError(t, err)
+
+		_, ok := auth.(*http.BasicAuth)
+		testutil.True(t, "basic auth for "+url, ok)
+	}
+
+	auth, err := gitrepo.AuthFor(config("http://git.example.com/example/fleet.git", "", ""))
+	testutil.NoError(t, err)
+	testutil.True(t, "a public repository over http needs no auth", auth == nil)
+}

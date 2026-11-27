@@ -159,7 +159,7 @@ The server works on a clone of the fleet repository, not on files of its own. Ev
 
 - **Pull:** the server fetches the branch every `server.git.pollInterval` (default 1 minute) and at once on a push webhook (`POST /hooks/git`, signed with HMAC-SHA256 by `WPFLEET_GIT_WEBHOOK_SECRET`, in the GitHub and Gitea header format). It hard-resets its clone to the remote; nobody edits that clone by hand.
 - **Push:** one write at a time. When the push is refused because the branch moved, the server resets to the new remote head, plans the edit again, and pushes once more; a second refusal fails the action and changes nothing.
-- **Auth:** an SSH deploy key (`WPFLEET_GIT_SSH_KEY`, a file path) or an HTTPS token (`WPFLEET_GIT_TOKEN`), never from `wpfleet.yaml`.
+- **Auth:** an SSH deploy key (`WPFLEET_GIT_SSH_KEY`, a file path) or an HTTPS token (`WPFLEET_GIT_TOKEN`), never from `wpfleet.yaml`. A token is refused with a plain `http` URL, since basic auth would send it in clear text, except to a loopback host for local tests.
 - **Not in the server's first version:** opening a pull request instead of pushing (each Git host has its own API), `build` (it needs a Docker daemon or an in-cluster builder) and `copy`.
 
 ### Single sign-on and access

@@ -2,6 +2,8 @@ package gitrepo
 
 import (
 	"fmt"
+	"net"
+	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
@@ -59,11 +61,16 @@ func sshAuth(ep *transport.Endpoint, keyFile string) (transport.AuthMethod, erro
 	return keys, nil
 }
 
-// tokenAuth sends a token with basic auth to an HTTPS endpoint.
+// tokenAuth sends a token with basic auth to an HTTPS endpoint. Plain http
+// is refused, because basic auth would carry the token in clear text, except
+// to a loopback address, which never leaves the machine (local tests).
 //
 //nolint:ireturn // go-git takes credentials only as this interface
 func tokenAuth(ep *transport.Endpoint, token string) (transport.AuthMethod, error) {
-	if ep.Protocol != "https" && ep.Protocol != "http" {
+	switch {
+	case ep.Protocol == "https":
+	case ep.Protocol == "http" && loopback(ep.Host):
+	default:
 		return nil, fmt.Errorf("%w: a token needs an HTTPS URL, not %s", ErrInvalid, ep.Protocol)
 	}
 
@@ -73,4 +80,16 @@ func tokenAuth(ep *transport.Endpoint, token string) (transport.AuthMethod, erro
 	}
 
 	return &http.BasicAuth{Username: user, Password: token}, nil
+}
+
+// loopback reports whether host is localhost or a loopback address; go-git
+// keeps the brackets of an IPv6 host.
+func loopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+
+	ip := net.ParseIP(strings.TrimSuffix(strings.TrimPrefix(host, "["), "]"))
+
+	return ip != nil && ip.IsLoopback()
 }
