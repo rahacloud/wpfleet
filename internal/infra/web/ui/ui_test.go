@@ -82,6 +82,43 @@ func TestThemeColorsMatchTheDomain(t *testing.T) {
 	testutil.Contains(t, "default primary", light, "--wf-primary: "+brand.DefaultPrimaryColor+";")
 }
 
+// TestControlEdgesContrast keeps the edges of the controls at 3:1 at least
+// on the page and the card in both themes (WCAG 1.4.11): they use
+// --wf-muted as it is, never mixed lighter, and --wf-muted reaches 3:1.
+func TestControlEdgesContrast(t *testing.T) {
+	t.Parallel()
+
+	css := stylesheet(t)
+	testutil.NotContains(t, "a control edge mixed lighter", css, "color-mix(in srgb, var(--wf-muted) 50%")
+
+	secondary := regexp.MustCompile(`(?s)\.wf-btn-secondary \{[^}]*\}`).FindString(css)
+	testutil.Contains(t, "secondary button", secondary, "border-color: var(--wf-muted);")
+
+	light, dark, ok := strings.Cut(css, "@media (prefers-color-scheme: dark)")
+	testutil.True(t, "a dark theme", ok)
+
+	muted := regexp.MustCompile(`--wf-muted: (#[0-9a-f]{6});`)
+
+	for _, theme := range []struct {
+		name, part  string
+		backgrounds []brand.Color
+	}{
+		{"light", light, []brand.Color{brand.LightBackground, brand.LightSurface}},
+		{"dark", dark, []brand.Color{brand.DarkBackground, brand.DarkSurface}},
+	} {
+		m := muted.FindStringSubmatch(theme.part)
+		testutil.True(t, theme.name+" --wf-muted", m != nil)
+
+		edge, err := brand.ParseColor(m[1])
+		testutil.NoError(t, err)
+
+		for _, bg := range theme.backgrounds {
+			ratio := brand.Contrast(edge, bg)
+			testutil.True(t, theme.name+" edge on "+bg.String()+" at 3:1", ratio >= 3)
+		}
+	}
+}
+
 // TestFooterIgnoresBranding renders the layout with a brand that tries to
 // change the footer: the footer stays wpfleet's.
 func TestFooterIgnoresBranding(t *testing.T) {

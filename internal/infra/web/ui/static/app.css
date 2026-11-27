@@ -404,9 +404,11 @@ button.primary {
   color: var(--wf-primary-contrast);
 }
 
+/* The edge of a control is --wf-muted, at least 3:1 on the page and the
+ * card in both themes (WCAG 1.4.11); --wf-line is only for separators. */
 .wf-btn-secondary {
   background: var(--wf-surface);
-  border-color: var(--wf-line);
+  border-color: var(--wf-muted);
   color: var(--wf-text);
 }
 
@@ -760,7 +762,7 @@ details.restore form {
   min-width: 0;
   font: inherit;
   padding: 0.45rem 0.6rem;
-  border: 1px solid color-mix(in srgb, var(--wf-muted) 50%, transparent);
+  border: 1px solid var(--wf-muted);
   border-radius: var(--wf-radius);
   background: var(--wf-surface);
   color: var(--wf-text);
@@ -851,7 +853,7 @@ details.restore form {
   font: inherit;
   max-width: 20rem;
   padding: 0.45rem 0.6rem;
-  border: 1px solid color-mix(in srgb, var(--wf-muted) 50%, transparent);
+  border: 1px solid var(--wf-muted);
   border-radius: var(--wf-radius);
   background: var(--wf-surface);
   color: var(--wf-text);
