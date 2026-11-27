@@ -80,7 +80,7 @@ jobs:
       # The version must be stamped, not devel: the context has no .git.
       - run: >-
           docker build -f build/package/Dockerfile
-          --build-arg VERSION=ci-${GITHUB_SHA::7} --build-arg COMMIT=${GITHUB_SHA::7}
+          --build-arg "VERSION=ci-${GITHUB_SHA::7}" --build-arg "COMMIT=${GITHUB_SHA::7}"
           -t wpfleet:ci .
       # The version names the commit, so the commit is not repeated after it.
       - run: docker run --rm wpfleet:ci --version | grep -F "ci-${GITHUB_SHA::7}"
