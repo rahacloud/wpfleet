@@ -2,6 +2,7 @@ package ui_test
 
 import (
 	"io/fs"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -56,6 +57,60 @@ func TestDesignSystemContract(t *testing.T) {
 	for _, physical := range []string{"margin-left", "margin-right", "padding-left", "padding-right", "float:", "right:"} {
 		testutil.NotContains(t, "logical properties", css, physical)
 	}
+}
+
+// TestEveryRuleIsUsed keeps the stylesheet free of rules for classes that
+// no component uses. When a page moved to a wf- class, a rule for the old
+// name stayed behind and never matched again: the narrow-screen layout of
+// the site page's facts was such a rule, so phones never got it.
+func TestEveryRuleIsUsed(t *testing.T) {
+	t.Parallel()
+
+	used := usedClasses(t)
+	css := regexp.MustCompile(`(?s)/\*.*?\*/|url\([^)]*\)`).ReplaceAllString(stylesheet(t), "")
+
+	for _, m := range regexp.MustCompile(`\.([a-zA-Z][\w-]*)`).FindAllStringSubmatch(css, -1) {
+		class := m[1]
+		if !used[class] && !strings.HasPrefix(class, "htmx-") { // htmx sets its own classes
+			used[class] = true // once per class
+
+			t.Errorf("app.css has a rule for .%s, which no component uses", class)
+		}
+	}
+}
+
+// usedClasses are the classes the components put on elements: the class
+// attributes of the generated Go, and the wf- names that the helpers and
+// templ.KV give to class expressions.
+func usedClasses(t *testing.T) map[string]bool {
+	t.Helper()
+
+	dir := os.DirFS(".")
+	files, err := fs.Glob(dir, "*.go")
+	testutil.NoError(t, err)
+
+	attr := regexp.MustCompile(`class=\\"([^\\]*)\\"`)
+	named := regexp.MustCompile(`"((?:wf-[\w-]+ ?)+)"`)
+	used := map[string]bool{}
+
+	for _, f := range files {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+
+		b, err := fs.ReadFile(dir, f)
+		testutil.NoError(t, err)
+
+		for _, m := range append(attr.FindAllStringSubmatch(string(b), -1), named.FindAllStringSubmatch(string(b), -1)...) {
+			for class := range strings.FieldsSeq(m[1]) {
+				used[class] = true
+			}
+		}
+	}
+
+	testutil.True(t, "classes found", used["wf-card"] && used["wf-badge-ok"] && used["ltr"])
+
+	return used
 }
 
 // TestThemeColorsMatchTheDomain keeps the page and card colors of app.css

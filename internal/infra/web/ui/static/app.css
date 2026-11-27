@@ -186,8 +186,7 @@ svg {
 }
 
 code,
-pre,
-.mono {
+pre {
   font-family: var(--wf-mono);
   font-size: 0.875rem;
 }
@@ -372,8 +371,7 @@ pre {
 /* Buttons. A link or a button with .wf-btn looks the same. */
 
 .wf-btn,
-button,
-.button {
+button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -397,8 +395,7 @@ button:hover {
   filter: brightness(0.96);
 }
 
-.wf-btn-primary,
-button.primary {
+.wf-btn-primary {
   background: var(--wf-primary);
   border-color: var(--wf-primary);
   color: var(--wf-primary-contrast);
@@ -412,8 +409,7 @@ button.primary {
   color: var(--wf-text);
 }
 
-.wf-btn-danger,
-button.danger {
+.wf-btn-danger {
   background: var(--wf-surface);
   border-color: var(--wf-bad);
   color: var(--wf-bad);
@@ -437,8 +433,7 @@ button[disabled] {
   cursor: not-allowed;
 }
 
-.wf-linkbtn,
-button.link {
+.wf-linkbtn {
   border: 0;
   background: none;
   color: var(--wf-link);
@@ -453,8 +448,7 @@ button.link {
 
 /* Badges: a word with a color, never the color alone. */
 
-.wf-badge,
-.badge {
+.wf-badge {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
@@ -529,12 +523,8 @@ label {
   inline-size: 100%;
 }
 
-/* Tables: wrapped so a wide one scrolls inside its card, never the page. */
-
-.table-wrap {
-  overflow-x: auto;
-  max-width: 100%;
-}
+/* Tables; .wf-page-table wraps a wide one so it scrolls inside its card,
+ * never the page. */
 
 table {
   border-collapse: collapse;
@@ -553,95 +543,6 @@ th {
   color: var(--wf-muted);
   font-weight: 600;
   font-size: 0.85rem;
-}
-
-/* What the pages used before the design system; kept so they look right
- * until they move to the wf- classes. */
-
-section.card {
-  background: var(--wf-surface);
-  border: 1px solid var(--wf-line);
-  border-radius: var(--wf-radius);
-  padding: 1rem;
-  margin-block-end: 1rem;
-}
-
-dl.facts {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.35rem 1.5rem;
-  margin: 0;
-}
-
-dl.facts dt {
-  color: var(--wf-muted);
-}
-
-dl.facts dd {
-  margin: 0;
-  min-width: 0;
-}
-
-.muted {
-  color: var(--wf-muted);
-}
-
-.ok {
-  color: var(--wf-ok);
-}
-
-.warn {
-  color: var(--wf-warn);
-}
-
-.bad {
-  color: var(--wf-bad);
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: flex-start;
-}
-
-.actions form {
-  margin: 0;
-}
-
-details.restore {
-  margin-block-start: 0.25rem;
-}
-
-details.restore form {
-  display: grid;
-  gap: 0.5rem;
-  margin-block-start: 0.5rem;
-  max-width: 28rem;
-}
-
-.message {
-  border-inline-start: 4px solid var(--wf-primary);
-  background: var(--wf-surface);
-  padding: 0.75rem 1rem;
-  border-radius: var(--wf-radius-small);
-}
-
-.message.bad {
-  border-inline-start-color: var(--wf-bad);
-}
-
-.cell .tag {
-  font-weight: 600;
-}
-
-.cell .meta {
-  font-size: 0.85rem;
-}
-
-.htmx-request.loading,
-.loading {
-  color: var(--wf-muted);
 }
 
 /* Narrow screens: a phone of 360 px and up. */
@@ -666,15 +567,6 @@ details.restore form {
 
   .wf-user {
     max-inline-size: 10rem;
-  }
-
-  dl.facts {
-    grid-template-columns: 1fr;
-    gap: 0 0;
-  }
-
-  dl.facts dd {
-    margin-block-end: 0.5rem;
   }
 
   .wf-row > .wf-btn,
@@ -786,6 +678,19 @@ details.restore form {
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+/* On a phone a fact's value goes under its name. This follows the rules
+ * above, which it overrides, rather than the narrow-screen block. */
+@media (max-width: 40rem) {
+  .wf-page-facts {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .wf-page-facts dd {
+    margin-block-end: 0.5rem;
+  }
 }
 
 .wf-page-env-title {
