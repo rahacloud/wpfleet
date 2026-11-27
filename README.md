@@ -48,19 +48,25 @@ The configuration file holds the `server` section described in [docs/configurati
 
 Editors and marketing teams do not need a terminal. They open the wpfleet address, sign in with the company account, and see only the sites their team looks after, one card per site. Each card says in words whether the site is online, links the site itself, and has "Open admin", which takes them straight into the WordPress dashboard without a WordPress password; the link is made for that one click and works once.
 
-![Signing in as an editor through the sign-in page, and landing in the shop's WordPress dashboard with "Open admin"](docs/images/server-open-admin.gif)
+![An editor signs in on the branded sign-in page, sees their one site under "Your sites", presses "Open admin" and lands in the WordPress dashboard](docs/images/server-open-admin.gif)
 
-What a person sees depends on their team. An editor of the shop sees the shop and nothing else, and only the buttons their team may use; for this editor that is "Open admin":
+What a person sees depends on their team. An editor of the shop sees the shop and nothing else, with its status in words per environment, "View site", and only the buttons their team may use, here "Open admin". There are no version numbers, image tags or commits on this page; environments carry the names the fleet gives them ("Live site", "Preview"), and the welcome line, logo and color are the brand's:
 
-![The home page of an editor of the shop: one card, with the live staging copy first and development below it](docs/images/server-editor-fleet.png)
+![The home page of an editor of the shop: one card with "Live site" and "Preview", each online, each with "Open admin"](docs/images/server-home.png)
 
-The platform team sees every site. When a newer version waits in the previous environment, the card offers "Publish development to staging"; a site's page adds "Back up now" and "Restore a backup", each with one line on what it does, the backups in words ("Yesterday at 03:12 UTC"), and, closed by default, the technical details: image, release history with the commit and author of each publication, pods and what a deploy would change. A restore explains what it replaces and asks for the site's name before it starts. The UI is also in Persian, right to left, with Solar Hijri dates, and follows the system's dark mode.
+The UI is also in Persian, right to left, with Persian digits and Solar Hijri dates, and the language is one click in the header. It follows the system's dark mode, and on a phone the cards and buttons take the full width without scrolling sideways:
 
-![The home page of the platform team: three sites, each with its status in words and "Open admin" per environment](docs/images/server-fleet.png)
+![The same page in Persian, right to left](docs/images/server-home-fa.png)
 
-![The same page in Persian, right to left, in dark mode](docs/images/server-fleet-fa.png)
+<img src="docs/images/server-home-phone.png" width="360" alt="The same page on a phone 360 pixels wide: the header on two rows and the card with full-width buttons">
 
-Every action, allowed or refused, and every sign-in and sign-out is written to the server's log with the person's email address, and a publication is a Git commit with that person as its author. [docs/for-content-teams.md](docs/for-content-teams.md) is a guide to the UI written for editors. The pictures come from the demo fleet on a local kind cluster, branded as the invented "Northwind Media", with invented users signed in through Dex (`sam@example.com` in the shop team, `alex@example.com` in the platform team) and an address bar drawn on them afterwards.
+The platform team sees every site. When a newer version waits in the previous environment, the card offers "Publish Preview to Live site", which opens a page that says what goes where before anything changes. A site's page adds "Back up now" and "Restore a backup", each with one line on what it does, and the backups in words ("Yesterday at 03:12 UTC"). A restore explains what it replaces and asks for the site's name before it starts. Closed by default, "Technical details" holds the image, the release history with the commit and the author of each publication, the pods, what a deploy would change and the Git history of the site's file:
+
+![The technical details of the blog's page, open after a publish from the UI: the release history names the commit and its author, Alex Example](docs/images/server-site-technical.png)
+
+Every action, allowed or refused, and every sign-in and sign-out is written to the server's log with the person's email address, and a publication is a Git commit with that person as its author. [docs/for-content-teams.md](docs/for-content-teams.md) is a guide to the UI written for editors.
+
+The pictures come from a demo on a local kind cluster (2026-11-27), not from a real organization: the brand "Northwind Media", its logo and the sites are invented, and so are the users who sign in through Dex (`sam@example.com` in the shop team, `alex@example.com` in the platform team). The demo has no S3 bucket, so its pages say that backups are off. The address bar is drawn on the screenshots afterwards.
 
 ### Make it yours
 
