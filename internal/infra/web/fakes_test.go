@@ -181,6 +181,16 @@ func (a fakeAccess) Permissions(groups []string, env, _ string) []access.Permiss
 	return granted
 }
 
+func (a fakeAccess) Any(groups []string) bool {
+	for _, g := range groups {
+		if len(a[g]) > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
 func (a fakeAccess) Allows(groups []string, env, site string, perm access.Permission) bool {
 	return slices.Contains(a.Permissions(groups, env, site), perm)
 }
@@ -276,6 +286,8 @@ type fakeOps struct {
 	tags       map[string]string
 	ready      string
 	release    *fakeRelease
+	history    []ops.Revision
+	historyErr error
 	diff       ops.SiteDiff
 	backups    []ops.BackupRow
 	backupsOff bool
@@ -310,6 +322,18 @@ func newFakeOps() *fakeOps {
 		backupErr:  nil,
 		block:      false,
 		applied:    nil,
+		historyErr: nil,
+		history: []ops.Revision{
+			{
+				Revision: 3, Updated: time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC), Status: statusDeployed,
+				ChartVersion: chartVersion, Author: editorName,
+				Commit: ops.Commit{SHA: "0123456789abcdef0123456789abcdef01234567", Dirty: false},
+			},
+			{
+				Revision: 2, Updated: time.Date(2026, 11, 24, 10, 0, 0, 0, time.UTC), Status: "superseded",
+				ChartVersion: chartVersion, Author: "", Commit: ops.Commit{SHA: "", Dirty: false},
+			},
+		},
 		envs: []web.Environment{
 			{Name: envDev, PromoteFrom: ""},
 			{Name: envStaging, PromoteFrom: envDev},
@@ -354,7 +378,9 @@ func (o *fakeOps) ListSites(_ context.Context, envs []string) ([]ops.SiteRow, er
 	for _, env := range envs {
 		for _, site := range o.sites[env] {
 			host := site + "." + env + ".example.com"
-			rows = append(rows, ops.SiteRow{Site: site, Env: env, Host: host, Image: o.image(env, site), Ready: o.ready})
+			rows = append(rows, ops.SiteRow{
+				Site: site, Env: env, Host: host, URL: "https://" + host, Image: o.image(env, site), Ready: o.ready,
+			})
 		}
 	}
 
@@ -366,7 +392,8 @@ func (o *fakeOps) ShowSite(_ context.Context, env, site string) (ops.SiteDetail,
 
 	last := time.Date(2026, 11, 26, 2, 0, 0, 0, time.UTC)
 	d := ops.SiteDetail{
-		Site: site, Env: env, Namespace: "wp-" + env, Host: site + "." + env + ".example.com", Image: o.image(env, site),
+		Site: site, Env: env, Namespace: "wp-" + env, Host: site + "." + env + ".example.com",
+		URL: "http://" + site + "." + env + ".example.com", Image: o.image(env, site),
 		Release: nil,
 		Pods:    []ops.SitePod{{Name: site + "-wordpress-0", Node: "node-a", Phase: "Running", Ready: true}},
 		Volume: ops.SiteVolume{
@@ -380,6 +407,16 @@ func (o *fakeOps) ShowSite(_ context.Context, env, site string) (ops.SiteDetail,
 	}
 
 	return d, nil
+}
+
+func (o *fakeOps) History(_ context.Context, env, site string, n int) ([]ops.Revision, error) {
+	o.record("History", env, site, strconv.Itoa(n))
+
+	if o.historyErr != nil {
+		return nil, o.historyErr
+	}
+
+	return o.history, nil
 }
 
 func (o *fakeOps) Diff(_ context.Context, env, site string) (ops.SiteDiff, error) {
@@ -435,7 +472,7 @@ func (o *fakeOps) Deploy(
 	o.record("Deploy", env, site, commit.SHA)
 	progress(ops.Event{Kind: ops.EventDeploying, Env: env, Site: site, Job: "", Namespace: "wp-" + env, Text: "Deploying"})
 
-	res := ops.DeployResult{Site: site, Env: env, Revision: 4, Status: "deployed", Updated: time.Now(), Error: ""}
+	res := ops.DeployResult{Site: site, Env: env, Revision: 4, Status: statusDeployed, Updated: time.Now(), Error: ""}
 	if o.deployErr != "" {
 		res.Status, res.Error = ops.StatusFailed, o.deployErr
 	}

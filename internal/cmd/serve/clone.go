@@ -113,6 +113,12 @@ func (c *clone) FileLog(ctx context.Context, path string, n int) ([]gitrepo.LogE
 	return c.repo.FileLog(ctx, path, n)
 }
 
+// CommitAuthor returns the author of a commit the clone has, for the
+// release history; snapshots have no .git to look in.
+func (c *clone) CommitAuthor(ctx context.Context, sha string) (gitrepo.Signature, error) {
+	return c.repo.CommitAuthor(ctx, sha)
+}
+
 // Dir is the snapshot of the newest commit, which holds the fleet.
 func (c *clone) Dir() string {
 	c.mu.Lock()

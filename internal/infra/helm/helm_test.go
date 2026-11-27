@@ -2,6 +2,7 @@ package helm_test
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -206,4 +207,32 @@ func TestSplitManifest(t *testing.T) {
 
 	docs := helm.SplitManifest("---\n# Source: a\nkind: A\n---\n\n---\nkind: B\n")
 	testutil.DeepEqual(t, "documents", docs, []string{"# Source: a\nkind: A", "kind: B"})
+}
+
+// History is newest first by number, whatever order the storage keeps, and
+// carries each revision's description.
+func TestHistory(t *testing.T) {
+	t.Parallel()
+
+	client := helm.NewInMemory(embedded(t))
+
+	_, err := client.History(site, namespace, 10)
+	testutil.ErrorIs(t, err, helm.ErrReleaseNotFound)
+
+	for _, v := range []int{9, 11, 10} {
+		r := record(v, common.StatusSuperseded, "")
+		r.Info.Description = "wpfleet rev" + strconv.Itoa(v)
+		testutil.NoError(t, client.Store(namespace, r))
+	}
+
+	all, err := client.History(site, namespace, 0)
+	testutil.NoError(t, err)
+	testutil.Equal(t, "revisions", len(all), 3)
+	testutil.DeepEqual(t, "order", []int{all[0].Revision, all[1].Revision, all[2].Revision}, []int{11, 10, 9})
+	testutil.Equal(t, "description", all[0].Description, "wpfleet rev11")
+	testutil.Equal(t, "status", all[0].Status, "superseded")
+
+	two, err := client.History(site, namespace, 2)
+	testutil.NoError(t, err)
+	testutil.DeepEqual(t, "limited", []int{two[0].Revision, two[1].Revision}, []int{11, 10})
 }

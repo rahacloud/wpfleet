@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
 )
@@ -77,4 +78,43 @@ func (r *Repo) FileLog(ctx context.Context, path string, n int) ([]LogEntry, err
 	}
 
 	return entries, nil
+}
+
+// ErrUnknownCommit is returned for a commit the repository does not have,
+// or a name that is not a full commit hash.
+var ErrUnknownCommit = errors.New("unknown commit")
+
+// CommitAuthor returns the author of the commit sha (a full hash) in the
+// clone: for a promotion from the UI, the person who made it. A commit the
+// clone does not have, such as one deployed from another branch or from a
+// CLI's unpushed tree, is ErrUnknownCommit.
+func (r *Repo) CommitAuthor(ctx context.Context, sha string) (Signature, error) {
+	err := ctx.Err()
+	if err != nil {
+		return Signature{}, fmt.Errorf("reading commit %s: %w", sha, err)
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	return Author(r.repo, sha)
+}
+
+// Author returns the author of the commit sha (a full hash) in repo, or
+// ErrUnknownCommit when repo does not have it.
+func Author(repo *git.Repository, sha string) (Signature, error) {
+	if !plumbing.IsHash(sha) {
+		return Signature{}, fmt.Errorf("%w: %q", ErrUnknownCommit, sha)
+	}
+
+	c, err := repo.CommitObject(plumbing.NewHash(sha))
+
+	switch {
+	case errors.Is(err, plumbing.ErrObjectNotFound):
+		return Signature{}, fmt.Errorf("%w: %s", ErrUnknownCommit, sha)
+	case err != nil:
+		return Signature{}, fmt.Errorf("reading commit %s: %w", sha, err)
+	}
+
+	return Signature{Name: c.Author.Name, Email: c.Author.Email}, nil
 }

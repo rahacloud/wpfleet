@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"slices"
 	"strconv"
@@ -17,6 +18,10 @@ import (
 
 // historyLength is how many commits of a site file the site page shows.
 const historyLength = 20
+
+// releaseHistoryLength is how many revisions of a site's release the site
+// page shows; Helm keeps ten.
+const releaseHistoryLength = 10
 
 // allows reports whether the session's person may use perm on site in env.
 func (s *Server) allows(sess session.Session, env, site string, perm access.Permission) bool {
@@ -109,15 +114,37 @@ func (s *Server) fleet(c *echo.Context) error {
 		return render(c, http.StatusOK, ui.FleetPage(s.page(c, l.T(i18n.SitesTitle)), ui.FleetView{Envs: nil, Rows: nil}))
 	}
 
-	rows, err := s.deps.Ops.ListSites(c.Request().Context(), listed)
+	view, err := s.fleetData(c.Request().Context(), sess, envs, listed)
 	if err != nil {
 		return err
+	}
+
+	return render(c, http.StatusOK, ui.FleetPage(s.page(c, l.T(i18n.SitesTitle)), view))
+}
+
+// fleetData builds the grid of the listed environments for the person in
+// sess.
+func (s *Server) fleetData(
+	ctx context.Context, sess session.Session, envs []Environment, listed []string,
+) (ui.FleetView, error) {
+	rows, err := s.deps.Ops.ListSites(ctx, listed)
+	if err != nil {
+		return ui.FleetView{Envs: nil, Rows: nil}, err
 	}
 
 	canView := func(env, site string) bool { return s.allows(sess, env, site, access.View) }
 	view := fleetView(envs, listed, canView, rows)
 
-	return render(c, http.StatusOK, ui.FleetPage(s.page(c, l.T(i18n.SitesTitle)), view))
+	for i := range view.Rows {
+		for j := range view.Rows[i].Cells {
+			cell := &view.Rows[i].Cells[j]
+			if cell.Present {
+				cell.AdminBlockedBy = s.adminBlockedBy(cell.Env, cell.Site)
+			}
+		}
+	}
+
+	return view, nil
 }
 
 // visibleEnvironments finds the environments with a site the person may
@@ -192,7 +219,10 @@ func fleetView(
 
 // fleetCell is one cell of the grid.
 func fleetCell(byCell map[cellKey]ops.SiteRow, from map[string]string, env, site string, visible bool) ui.FleetCell {
-	cell := ui.FleetCell{Env: env, Site: site, Visible: visible, Present: false, Tag: "", Ready: "", NewerIn: ""}
+	cell := ui.FleetCell{
+		Env: env, Site: site, Visible: visible, Present: false, Tag: "", URL: "", AdminBlockedBy: "", Ready: "",
+		NewerIn: "",
+	}
 	if !visible {
 		return cell
 	}
@@ -204,6 +234,7 @@ func fleetCell(byCell map[cellKey]ops.SiteRow, from map[string]string, env, site
 
 	cell.Present = true
 	cell.Tag = imageTag(r.Image)
+	cell.URL = r.URL
 
 	if r.Ready != ops.ReadyUnknown {
 		cell.Ready = r.Ready
@@ -288,20 +319,30 @@ func (s *Server) sitePage(c *echo.Context) error {
 		return err
 	}
 
-	sess := sessionOf(c)
-	ctx := c.Request().Context()
-
-	environment, _, err := s.environment(env)
+	view, err := s.siteView(c.Request().Context(), sessionOf(c), env, site)
 	if err != nil {
 		return err
+	}
+
+	return render(c, http.StatusOK, ui.SitePage(s.page(c, site+" · "+env), view))
+}
+
+// siteView builds the page of site in env for the person in sess. Only the
+// fleet failing to load is an error; a cluster that cannot be read marks
+// the view Unavailable and the rest still shows.
+func (s *Server) siteView(ctx context.Context, sess session.Session, env, site string) (ui.SiteView, error) {
+	environment, _, err := s.environment(env)
+	if err != nil {
+		return ui.SiteView{}, err
 	}
 
 	perms := s.perms(sess, env, site)
 	view := ui.SiteView{
 		Env: env, Site: site, Host: "", URL: "", Image: "", Tag: "",
 		PromoteFrom: "", FromTag: "", CanPublish: false,
-		Perms: perms, Engineering: perms.Deploy, Running: "", Unavailable: false, Ready: "",
-		Pods: nil, Release: nil, Volume: ui.Volume{Claim: "", Found: false, Phase: "", Capacity: "", StorageClass: ""},
+		Perms: perms, Engineering: perms.Deploy, Running: "", AdminBlockedBy: s.adminBlockedBy(env, site),
+		Unavailable: false, Ready: "", Pods: nil, Release: nil, History: nil,
+		Volume: ui.Volume{Claim: "", Found: false, Phase: "", Capacity: "", StorageClass: ""},
 		Backup: ui.BackupState{Enabled: false, LastSuccess: nil}, CSRF: sess.CSRF,
 	}
 
@@ -317,6 +358,10 @@ func (s *Server) sitePage(c *echo.Context) error {
 		view.Unavailable = true
 	}
 
+	if view.Release != nil {
+		view.History = s.releaseHistory(ctx, env, site)
+	}
+
 	if environment.PromoteFrom != "" && s.allows(sess, environment.PromoteFrom, site, access.View) {
 		plan, err := s.deps.Ops.PlanPromotion(env, site)
 		if err == nil {
@@ -326,15 +371,45 @@ func (s *Server) sitePage(c *echo.Context) error {
 		}
 	}
 
-	return render(c, http.StatusOK, ui.SitePage(s.page(c, site+" · "+env), view))
+	return view, nil
+}
+
+// adminBlockedBy is the action that would make "Open admin" on site in env
+// refused as busy now, or empty.
+func (s *Server) adminBlockedBy(env, site string) ui.Action {
+	running, ok := s.deps.Locks.Blocking(env, site, string(ui.ActionLogin))
+	if !ok {
+		return ""
+	}
+
+	return ui.Action(running)
+}
+
+// releaseHistory reads the revisions of the site's release; a failure is
+// logged and shows as no history, the rest of the page still renders.
+func (s *Server) releaseHistory(ctx context.Context, env, site string) []ui.ReleaseEntry {
+	revisions, err := s.deps.Ops.History(ctx, env, site, releaseHistoryLength)
+	if err != nil {
+		s.log.WarnContext(ctx, "reading a release's history", "env", env, "site", site, "error", err)
+
+		return nil
+	}
+
+	entries := make([]ui.ReleaseEntry, 0, len(revisions))
+	for _, r := range revisions {
+		entries = append(entries, ui.ReleaseEntry{
+			Revision: r.Revision, Updated: r.Updated, Status: r.Status,
+			Commit: ui.ShortSHA(r.Commit.SHA), Dirty: r.Commit.Dirty, Author: r.Author,
+		})
+	}
+
+	return entries
 }
 
 // fillSite copies what ShowSite read into the site page.
 func fillSite(view *ui.SiteView, d ops.SiteDetail) {
 	view.Host = d.Host
-	if d.Host != "" {
-		view.URL = "https://" + d.Host
-	}
+	view.URL = d.URL
 
 	view.Image = d.Image
 	view.Tag = imageTag(d.Image)

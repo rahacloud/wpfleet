@@ -3,11 +3,13 @@
 package helm
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -336,6 +338,46 @@ func (c *Client) Status(site, namespace string) (Release, error) {
 	}
 
 	return summarize(rel)
+}
+
+// History returns the newest max revisions of the release of site, newest
+// first; max 0 or less returns every revision Helm keeps. A site without a
+// release is ErrReleaseNotFound.
+func (c *Client) History(site, namespace string, maxRevisions int) ([]Release, error) {
+	cfg, err := c.configure(namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	versions, err := action.NewHistory(cfg).Run(site)
+	if err != nil {
+		return nil, fmt.Errorf("reading the history of release %s: %w", site, err)
+	}
+
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("reading the history of release %s: %w", site, ErrReleaseNotFound)
+	}
+
+	out := make([]Release, 0, len(versions))
+
+	for _, v := range versions {
+		r, err := summarize(v)
+		if err != nil {
+			return nil, err
+		}
+
+		out = append(out, r)
+	}
+
+	// The storage drivers list revisions in their own order (the Secret
+	// driver by name, so v10 before v9), not by number.
+	slices.SortFunc(out, func(a, b Release) int { return cmp.Compare(b.Revision, a.Revision) })
+
+	if maxRevisions > 0 && len(out) > maxRevisions {
+		out = out[:maxRevisions]
+	}
+
+	return out, nil
 }
 
 // summarize turns a release into a Release.

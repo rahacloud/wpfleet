@@ -93,6 +93,12 @@ type FleetCell struct {
 	Present bool
 	// Tag is the image tag the environment's values deploy.
 	Tag string
+	// URL is the site's address with the scheme its ingress serves, empty
+	// when the values give no host.
+	URL string
+	// AdminBlockedBy is the action that would make "Open admin" refused as
+	// busy right now (only a restore does); empty when the admin can open.
+	AdminBlockedBy Action
 	// Ready is ready pods out of running ones, or empty when unknown.
 	Ready string
 	// NewerIn names the environment this one promotes from when that one
@@ -150,7 +156,8 @@ type Perms struct {
 type SiteView struct {
 	// Env and Site name the site.
 	Env, Site string
-	// Host is the site's address and URL its link.
+	// Host is the site's address and URL its link, with the scheme its
+	// ingress serves.
 	Host, URL string
 	// Image is the full image and Tag its tag.
 	Image, Tag string
@@ -169,6 +176,11 @@ type SiteView struct {
 	Engineering bool
 	// Running is the action in progress on the site; empty when none.
 	Running Action
+	// AdminBlockedBy is the action that would make "Open admin" refused as
+	// busy right now; empty when the admin can open. A login runs beside a
+	// deploy, a publish, a backup and other logins, so only a restore
+	// blocks it.
+	AdminBlockedBy Action
 	// Unavailable says the cluster could not be read; the rest still shows.
 	Unavailable bool
 	// Ready is ready pods out of running ones.
@@ -177,6 +189,10 @@ type SiteView struct {
 	Pods []Pod
 	// Release is the installed release; nil when the site is not installed.
 	Release *Release
+	// History is the release's revisions, newest first: when each was
+	// deployed, from which commit and by whom. Empty when the site is not
+	// installed or its history could not be read.
+	History []ReleaseEntry
 	// Volume is the uploads volume.
 	Volume Volume
 	// Backup is the state of the backup CronJob.
@@ -206,6 +222,24 @@ type Release struct {
 	Commit string
 	// Dirty says the revision was deployed from uncommitted changes.
 	Dirty bool
+}
+
+// ReleaseEntry is one revision of a site's release.
+type ReleaseEntry struct {
+	// Revision is Helm's revision number.
+	Revision int
+	// Updated is when the revision was deployed.
+	Updated time.Time
+	// Status is Helm's status: deployed, superseded, failed and the like.
+	Status string
+	// Commit is the short commit the revision was deployed from; empty when
+	// it was not deployed by wpfleet or recorded no commit.
+	Commit string
+	// Dirty says the revision was deployed from uncommitted changes.
+	Dirty bool
+	// Author is the Git author of that commit, for a publish from the UI
+	// the person who made it; empty when the clone does not have it.
+	Author string
 }
 
 // Volume is a site's uploads claim.

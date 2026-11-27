@@ -201,6 +201,21 @@ func SiteURL(v values.Values) (string, error) {
 	return scheme + "://" + host, nil
 }
 
+// urlOf is SiteURL for values whose host was already read, empty without a
+// host.
+func urlOf(v values.Values, host string) string {
+	if host == "" {
+		return ""
+	}
+
+	u, err := SiteURL(v)
+	if err != nil {
+		return ""
+	}
+
+	return u
+}
+
 // ChartPath resolves the configured chart against the fleet directory; empty
 // means the chart embedded in the binary.
 func (f *Fleet) ChartPath() string {

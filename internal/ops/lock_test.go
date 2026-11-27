@@ -73,3 +73,66 @@ func TestLocksConcurrent(t *testing.T) {
 	wg.Wait()
 	testutil.Equal(t, "holders", got, 1)
 }
+
+// beside lets a login run beside anything but a restore, the way the server
+// allows it.
+func beside(running, wanted string) bool {
+	const login, restore = "login", "restore"
+
+	return (running == login || wanted == login) && running != restore && wanted != restore
+}
+
+func TestLocksBeside(t *testing.T) {
+	t.Parallel()
+
+	locks := ops.Locks{Beside: beside}
+
+	deploy, err := locks.TryLock("staging", "blog", "deploy")
+	testutil.NoError(t, err)
+
+	_, blocked := locks.Blocking("staging", "blog", "login")
+	testutil.True(t, "a login is not blocked by a deploy", !blocked)
+
+	login, err := locks.TryLock("staging", "blog", "login")
+	testutil.NoError(t, err)
+
+	second, err := locks.TryLock("staging", "blog", "login")
+	testutil.NoError(t, err)
+
+	running, _ := locks.Running("staging", "blog")
+	testutil.Equal(t, "the first holder is running", running, "deploy")
+
+	_, err = locks.TryLock("staging", "blog", "backup")
+	testutil.ErrorIs(t, err, ops.ErrBusy)
+
+	deploy()
+
+	// The logins still hold the site, so a restore waits for them.
+	by, blocked := locks.Blocking("staging", "blog", "restore")
+	testutil.True(t, "a restore is blocked by a login", blocked && by == "login")
+
+	_, err = locks.TryLock("staging", "blog", "restore")
+	testutil.ErrorIs(t, err, ops.ErrBusy)
+
+	login()
+	login() // releases only its own entry, once
+
+	running, _ = locks.Running("staging", "blog")
+	testutil.Equal(t, "the other login holds it", running, "login")
+
+	second()
+
+	restore, err := locks.TryLock("staging", "blog", "restore")
+	testutil.NoError(t, err)
+
+	by, blocked = locks.Blocking("staging", "blog", "login")
+	testutil.True(t, "a login is blocked by a restore", blocked && by == "restore")
+
+	_, err = locks.TryLock("staging", "blog", "login")
+	testutil.ErrorIs(t, err, ops.ErrBusy)
+
+	restore()
+
+	_, ok := locks.Running("staging", "blog")
+	testutil.True(t, "released", !ok)
+}

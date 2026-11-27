@@ -32,12 +32,15 @@ const (
 	groupPlatform   = "platform"
 	tagOld          = "20261120-090000"
 	stagingBlogFile = "environments/staging/blog.yaml"
+	editorName      = "An Editor"
+	statusDeployed  = "deployed"
+	chartVersion    = "0.1.0"
 )
 
 // editor is of the shop team, who may view and log in to staging.
 func editor() access.Identity {
 	return access.Identity{
-		Subject: "editor", Email: "editor@example.com", Name: "An Editor", Groups: []string{"shop-team"},
+		Subject: "editor", Email: "editor@example.com", Name: editorName, Groups: []string{"shop-team"},
 	}
 }
 
@@ -56,7 +59,7 @@ func stranger() access.Identity {
 // helmRelease is a deployed release with a description.
 func helmRelease(site, env, description string) *helm.Release {
 	return &helm.Release{
-		Name: site, Namespace: "wp-" + env, Revision: 3, Status: "deployed", ChartVersion: "0.1.0",
+		Name: site, Namespace: "wp-" + env, Revision: 3, Status: statusDeployed, ChartVersion: chartVersion,
 		Updated: time.Date(2026, 11, 25, 10, 0, 0, 0, time.UTC), Description: description,
 	}
 }
@@ -86,7 +89,7 @@ func newHarness(t *testing.T) *harness {
 		//nolint:exhaustruct_v5 // the fake records the rest
 		repo:  &fakeRepo{head: "0123456789abcdef0123456789abcdef01234567", dir: t.TempDir()},
 		ops:   newFakeOps(),
-		locks: &ops.Locks{},
+		locks: &ops.Locks{Beside: web.Beside},
 		audit: &auditLog{}, //nolint:exhaustruct_v5 // zero is empty
 	}
 
@@ -762,8 +765,8 @@ func TestFleetReadFailureIsAudited(t *testing.T) {
 	testutil.Contains(t, "detail", rec.Detail, "reading the fleet", errFake.Error())
 }
 
-// A login waits for no one: while another action holds the site it is
-// refused as busy, so its token never lands in a database being replaced.
+// A login waits for no one: while a restore holds the site it is refused as
+// busy, so its token never lands in a database being replaced.
 func TestAdminIsRefusedWhileBusy(t *testing.T) {
 	t.Parallel()
 
@@ -966,4 +969,112 @@ func TestNewNeedsItsDependencies(t *testing.T) {
 	_, err := web.New(web.Deps{}) //nolint:exhaustruct_v5 // the point is the missing fields
 	testutil.ErrorIs(t, err, web.ErrMissingDep)
 	testutil.Contains(t, "error", err.Error(), "Auth", "Sessions", "Audit")
+}
+
+// signInAs runs a whole sign-in through the fake provider, which names id,
+// and returns the callback's response.
+func (h *harness) signInAs(id access.Identity) *httptest.ResponseRecorder {
+	h.t.Helper()
+
+	h.auth.mu.Lock()
+	h.auth.identity = id
+	h.auth.mu.Unlock()
+
+	w := h.request(http.MethodGet, "/auth/login", nil, nil)
+	location, err := url.Parse(w.Header().Get("Location"))
+	testutil.NoError(h.t, err)
+
+	callback := "/auth/callback?code=abc&state=" + url.QueryEscape(location.Query().Get("state"))
+
+	return h.request(http.MethodGet, callback, nil, w.Result().Cookies()[0])
+}
+
+func TestSignInIsAudited(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	w := h.signInAs(editor())
+	testutil.Equal(t, "status", w.Code, http.StatusSeeOther)
+
+	rec := h.audit.only(t)
+	testutil.Equal(t, "action", rec.Action, "sign-in")
+	testutil.Equal(t, "result", rec.Result, audit.ResultOK)
+	testutil.Equal(t, "allowed", rec.Allowed, true)
+	testutil.Equal(t, "actor", rec.Actor.Email, editor().Email)
+	testutil.Equal(t, "no site", rec.Site, "")
+}
+
+// A person no access rule matches is refused at sign-in: no session, the
+// page that says so, and a denied line naming them.
+func TestSignInWithoutAccessIsRefused(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	w := h.signInAs(stranger())
+	testutil.Equal(t, "status", w.Code, http.StatusForbidden)
+	testutil.Contains(t, "page", w.Body.String(), "Your account has no access to any site.")
+	testutil.Equal(t, "no session", len(w.Result().Cookies()), 0)
+
+	rec := h.audit.only(t)
+	testutil.Equal(t, "action", rec.Action, "sign-in")
+	testutil.Equal(t, "result", rec.Result, audit.ResultDenied)
+	testutil.Equal(t, "allowed", rec.Allowed, false)
+	testutil.Equal(t, "actor", rec.Actor.Email, stranger().Email)
+	testutil.Contains(t, "detail", rec.Detail, "no access rule")
+}
+
+// A sign-in that never names a person is denied with no actor: the
+// provider's refusal, a forged state, a code that does not redeem.
+func TestFailedSignInsAreAudited(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	w := h.request(http.MethodGet, "/auth/callback?error=access_denied&error_description=the+user+said+no", nil, nil)
+	testutil.Equal(t, "provider refusal", w.Code, http.StatusUnauthorized)
+
+	w = h.request(http.MethodGet, "/auth/login", nil, nil)
+	w = h.request(http.MethodGet, "/auth/callback?code=abc&state=forged", nil, w.Result().Cookies()[0])
+	testutil.Equal(t, "forged state", w.Code, http.StatusUnauthorized)
+
+	h.auth.mu.Lock()
+	h.auth.err = errFake
+	h.auth.mu.Unlock()
+
+	w = h.signInAs(editor())
+	testutil.Equal(t, "failed exchange", w.Code, http.StatusUnauthorized)
+
+	records := h.audit.all()
+	testutil.Equal(t, "records", len(records), 3)
+
+	for i, want := range []string{"access_denied: the user said no", "another state", errFake.Error()} {
+		testutil.Equal(t, "action", records[i].Action, "sign-in")
+		testutil.Equal(t, "result", records[i].Result, audit.ResultDenied)
+		testutil.Equal(t, "allowed", records[i].Allowed, false)
+		testutil.Equal(t, "no actor", records[i].Actor.Subject, "")
+		testutil.Contains(t, "detail", records[i].Detail, want)
+	}
+}
+
+func TestSignOutIsAudited(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	cookie, csrf := h.as(editor(), "")
+
+	h.request(http.MethodPost, "/auth/logout", form("bad"), cookie)
+	h.request(http.MethodPost, "/auth/logout", form(csrf), cookie)
+	// Without a session nothing changes, so nothing is audited.
+	h.request(http.MethodPost, "/auth/logout", form(csrf), nil)
+
+	records := h.audit.all()
+	testutil.Equal(t, "records", len(records), 2)
+	testutil.Equal(t, "refused action", records[0].Action, "sign-out")
+	testutil.Equal(t, "refused", records[0].Result, audit.ResultDenied)
+	testutil.Equal(t, "refused allowed", records[0].Allowed, false)
+	testutil.Equal(t, "action", records[1].Action, "sign-out")
+	testutil.Equal(t, "result", records[1].Result, audit.ResultOK)
+	testutil.Equal(t, "actor", records[1].Actor.Email, editor().Email)
 }
