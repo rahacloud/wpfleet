@@ -18,14 +18,15 @@ func sessionOf(id access.Identity) session.Session {
 	return session.Session{Identity: id, Expires: time.Now().Add(time.Hour), CSRF: "csrf-" + id.Subject, Lang: ""}
 }
 
-// The site page gets the site's URL with the scheme from its values, and
-// the release's history with each revision's commit and author.
+// The site page gets the site's URL with the scheme from its values, and,
+// for people with deploy, the release's history with each revision's commit
+// and author.
 func TestSiteViewData(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
 
-	view, err := h.server.SiteView(t.Context(), sessionOf(editor()), envStaging, siteBlog)
+	view, err := h.server.SiteView(t.Context(), sessionOf(platform()), envStaging, siteBlog)
 	testutil.NoError(t, err)
 	testutil.Equal(t, "url keeps the scheme ShowSite gave", view.URL, "http://blog.staging.example.com")
 	testutil.DeepEqual(t, "history", view.Releases, []ui.ReleaseEntry{
@@ -44,7 +45,7 @@ func TestSiteViewData(t *testing.T) {
 	// A site without a release has no history to read.
 	h.ops.release = nil
 
-	view, err = h.server.SiteView(t.Context(), sessionOf(editor()), envStaging, siteBlog)
+	view, err = h.server.SiteView(t.Context(), sessionOf(platform()), envStaging, siteBlog)
 	testutil.NoError(t, err)
 	testutil.Equal(t, "no history", len(view.Releases), 0)
 	testutil.Equal(t, "history read once", len(h.ops.called("History")), 1)
@@ -53,12 +54,25 @@ func TestSiteViewData(t *testing.T) {
 	h.ops.release = &fakeRelease{description: "wpfleet 0123456789abcdef0123456789abcdef01234567"}
 	h.ops.historyErr = errFake
 
-	view, err = h.server.SiteView(t.Context(), sessionOf(editor()), envStaging, siteBlog)
+	view, err = h.server.SiteView(t.Context(), sessionOf(platform()), envStaging, siteBlog)
 	testutil.NoError(t, err)
 	testutil.Equal(t, "only the installed release on failure", len(view.Releases), 1)
 	testutil.Equal(t, "with its commit", view.Releases[0].Commit, "01234567")
 	testutil.Equal(t, "and no author", view.Releases[0].Author, "")
 	testutil.True(t, "the release still shows", view.Release != nil)
+}
+
+// The release history is drawn only in the technical details, which only
+// people with deploy see, so an editor's page does not read it: no Helm
+// history from the cluster and no commit authors from the clone.
+func TestSiteViewReadsNoHistoryForEditors(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	_, err := h.server.SiteView(t.Context(), sessionOf(editor()), envStaging, siteBlog)
+	testutil.NoError(t, err)
+	testutil.Equal(t, "history reads", len(h.ops.called("History")), 0)
 }
 
 // The home page gets each site's URL with the scheme from its values, and

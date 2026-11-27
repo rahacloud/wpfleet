@@ -150,7 +150,10 @@ func (s *Server) siteView(ctx context.Context, sess session.Session, env, site s
 		view.Unavailable = true
 	}
 
-	if view.Release != nil {
+	// The release history is only drawn in the technical details, for
+	// people with deploy; reading it for anyone else costs a read of the
+	// cluster and of the clone for nothing.
+	if view.Release != nil && view.Engineering {
 		if history := s.releaseHistory(ctx, env, site); len(history) > 0 {
 			view.Releases = history
 		}
