@@ -22,7 +22,13 @@ func TestBrandView(t *testing.T) {
 	testutil.Equal(t, "mailto", v.SupportURL, "mailto:web-help@example.com")
 	testutil.Equal(t, "welcome", v.Welcome, "سلام.")
 	testutil.Equal(t, "no logo", v.LogoURL, "")
+	testutil.Equal(t, "no wordmark", v.LogoIncludesName, false)
 	testutil.Equal(t, "default favicon", v.FaviconType, "image/svg+xml")
+
+	// The flag alone does not hide the name: without a logo there is
+	// nothing that shows it.
+	a.b.LogoIncludesName = true
+	testutil.Equal(t, "no wordmark without a logo", a.view(i18n.English).LogoIncludesName, false)
 
 	a.b.Welcome = map[i18n.Lang]string{i18n.English: "Hello."}
 	testutil.Equal(t, "English when Persian has none", a.view(i18n.Persian).Welcome, "Hello.")

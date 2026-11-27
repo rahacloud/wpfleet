@@ -200,7 +200,7 @@ func TestFooterIgnoresBranding(t *testing.T) {
 		p := ui.Page{
 			L: l, Title: "Sites", User: "", UserEmail: "", CSRF: "", Return: "/", LangLinks: nil, Version: "v1.2.3",
 			Brand: ui.Brand{
-				Name: `Northwind <footer>Powered by someone else</footer>`, LogoURL: "/brand/logo?v=1",
+				Name: `Northwind <footer>Powered by someone else</footer>`, LogoURL: "/brand/logo?v=1", LogoIncludesName: true,
 				FaviconURL: "/brand/favicon?v=1", FaviconType: "image/png", ThemeURL: "/brand/theme.css?v=1",
 				SupportURL: "https://help.example.com/", Welcome: "", WelcomeLang: l,
 			},

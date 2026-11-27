@@ -13,6 +13,7 @@ import (
 	"github.com/rahacloud/wpfleet/internal/infra/config"
 	"github.com/rahacloud/wpfleet/internal/infra/gitrepo"
 	"github.com/rahacloud/wpfleet/internal/infra/oidc"
+	"github.com/rahacloud/wpfleet/internal/infra/web"
 )
 
 // SnapshotWait is how long a replaced snapshot stays.
@@ -75,6 +76,9 @@ func FilterGroups(
 ) (access.Identity, error) {
 	return ruleGroups(p, policy).Exchange(ctx, code, verifier, nonce)
 }
+
+// WebBranding turns the server section's branding into the web server's.
+func WebBranding(b config.Branding, dir func() string) web.Branding { return branding(b, dir) }
 
 // CheckBranding checks the brand's images in the fleet at dir.
 func CheckBranding(dir string, b config.Branding) error {

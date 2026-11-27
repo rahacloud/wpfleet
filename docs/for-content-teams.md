@@ -8,13 +8,13 @@ Your organization may show the page under its own name, logo and colors, so it m
 
 Your organization's WordPress websites run on servers that a platform team looks after. wpfleet is the tool they use to run all of them in the same way. Its web page gives you the everyday actions you need, without passwords to remember and without waiting for someone to do them for you.
 
-Each website usually exists more than once:
+Each website usually exists more than once. In this guide the copies are called by the names a page might show, for example:
 
-- **Development**, where new designs and plugins are tried first.
-- **Staging**, a private copy where you check changes before anyone else sees them.
-- **Production**, the website your visitors see. The page marks it **Live**.
+- **Draft**, where new designs and plugins are tried first.
+- **Preview**, a private copy where you check changes before anyone else sees them.
+- **Live site**, the website your visitors see. The page marks it **Live**.
 
-Your platform team may use other names for these. The page always uses the names they chose.
+The names on your page come from how your platform team set up wpfleet, so yours may be different, and they may be fewer or more copies than three.
 
 ## Sign in
 
@@ -31,11 +31,11 @@ The page is in English and Persian. It follows your browser's language at first.
 The first page, **Your sites**, has one card for each website. A card shows:
 
 - the website's name, and **View site**, which opens the website in a new tab;
-- one line for each copy you may see (live first, then staging, then development), with its status in words: **Online**, **Starting** (it is coming up, for example after a publish), **Down**, or **Status unknown** (the page could not check);
+- one line for each copy you may see (the live site first, then the copies that lead to it, for example Live site, then Preview, then Draft), with its status in words: **Online**, **Starting** (it is coming up, for example after a publish), **Down**, or **Status unknown** (the page could not check);
 - **Open admin** on each line where you may sign in to the dashboard;
 - when the last backup was made, for example "Backed up 3 hours ago", or "Could not check the backups right now" when the page could not check;
 - **Backups and more**, which opens the website's own page, where you back up and restore;
-- **Publish staging to production** (with the names your team gave its copies, for example "Publish Preview to Live site"), when staging has a newer version than production and you are allowed to publish it.
+- **Publish Preview to Live site**, when the preview copy has a newer version than the live site and you are allowed to publish it.
 
 When you work on more than six websites, a search box at the top finds a website by part of its name or address as you type.
 
@@ -65,7 +65,7 @@ While a backup is being restored on a website, **Open admin** is greyed out for 
 
 ## Publish
 
-When a change is ready on staging, for example a new theme version or an updated plugin, **Publish staging to production** puts the same version on the live website. It first opens a page that says which version goes where and, for the live website, that visitors see it as soon as it is done; nothing changes until you press **Publish now** there. Only people whose team is allowed to publish see this button.
+When a change is ready on the preview copy, for example a new theme version or an updated plugin, **Publish Preview to Live site** puts the same version on the live website. It first opens a page that says which version goes where and, for the live website, that visitors see it as soon as it is done; nothing changes until you press **Publish now** there. Only people whose team is allowed to publish see this button.
 
 Every publication is recorded with your name, so your team can always see who published what and when.
 
@@ -90,10 +90,10 @@ When it ends, the page says what happened and what to do next: check the website
 
 ## Things to know
 
-- **Plugin and theme updates do not happen in the dashboard.** The dashboard says that updates are turned off, and that is on purpose. The platform team tests each update on development and staging first, and it reaches the live website with **Publish**. This keeps the live website from breaking because of an untested update.
+- **Plugin and theme updates do not happen in the dashboard.** The dashboard says that updates are turned off, and that is on purpose. The platform team tests each update on the copies before the live site first (Draft and Preview, in this guide's names), and it reaches the live website with **Publish**. This keeps the live website from breaking because of an untested update.
 - **Everything is recorded.** Every action, including the ones that are refused, and every sign-in and sign-out, is written to a log with your name and the time. This protects you as much as the website.
 - **One change at a time.** While a website is being published, backed up or restored, wpfleet does not start a second publish, backup or restore on the same website. The page tells you what is running; try again when it is done.
 
 ## Getting help
 
-Press **Need help?** at the top of any page, or **Contact support** where a page offers it. Your organization chooses where these lead. If neither is there, contact your platform team. Tell them the website, whether it was development, staging or live, and what you pressed.
+Press **Need help?** at the top of any page, or **Contact support** where a page offers it. Your organization chooses where these lead. If neither is there, contact your platform team. Tell them the website, which copy it was (by the name the page shows, for example Preview or Live site), and what you pressed.

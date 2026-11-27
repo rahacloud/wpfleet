@@ -52,6 +52,10 @@ type Brand struct {
 	Name string
 	// LogoURL is the logo's address; empty shows the name alone.
 	LogoURL string
+	// LogoIncludesName says the logo already shows the name, so the header
+	// does not print it a second time beside the logo; screen readers
+	// still read it. It has no effect without LogoURL.
+	LogoIncludesName bool
 	// FaviconURL and FaviconType are the favicon's address and media type.
 	FaviconURL, FaviconType string
 	// ThemeURL is the stylesheet with the brand's colors.
