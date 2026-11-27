@@ -636,6 +636,23 @@ func TestBackupStreamsLogsEscaped(t *testing.T) {
 		"The backup is taken.")
 }
 
+// SSE ends a line at a bare CR too, so a CR in a Job's log must not reach
+// the stream inside a data line, where it would start a field of its own.
+func TestBackupLogCannotEndTheStream(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.ops.backupLog = "50%\r100%\revent: done\rdata:Restored\r\n"
+	cookie, csrf := h.as(platform(), "")
+
+	w := h.request(http.MethodPost, "/sites/staging/blog/backup", form(csrf), cookie)
+	body := h.events(w.Header().Get("Location"), cookie).Body.String()
+
+	testutil.NotContains(t, "events", body, "\r")
+	testutil.Contains(t, "events", body, "data: <span>50%\ndata: 100%\ndata: event: done\ndata: data:Restored\n")
+	testutil.Equal(t, "one done event", strings.Count(body, "\nevent: done\n"), 1)
+}
+
 func TestTaskIsHiddenFromOthers(t *testing.T) {
 	t.Parallel()
 

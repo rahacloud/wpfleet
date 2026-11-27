@@ -225,6 +225,12 @@ func (s *Server) start(
 	return c.Redirect(http.StatusSeeOther, "/tasks/"+t.id)
 }
 
+// toLF turns the line ends SSE knows (CRLF and a bare CR as well as LF)
+// into LF.
+func toLF(s string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(s, "\r\n", "\n"), "\r", "\n")
+}
+
 // joinDetail puts two details in one, either may be empty.
 func joinDetail(a, b string) string {
 	if a == "" {
@@ -325,7 +331,9 @@ func (s *Server) events(c *echo.Context) error {
 }
 
 // writeEvent writes one server-sent event whose data is a rendered
-// component, one data line per line of HTML.
+// component, one data line per line of HTML. SSE ends a line at CR as well
+// as LF, so every line end becomes its own data line: a CR left inside one
+// would let a Job's log start a field of its own, such as a fake done event.
 func writeEvent(ctx context.Context, w http.ResponseWriter, name string, comp templ.Component) error {
 	var buf bytes.Buffer
 	err := comp.Render(ctx, &buf)
@@ -337,7 +345,7 @@ func writeEvent(ctx context.Context, w http.ResponseWriter, name string, comp te
 
 	out.WriteString("event: " + name + "\n")
 
-	for line := range strings.Lines(buf.String()) {
+	for line := range strings.Lines(toLF(buf.String())) {
 		out.WriteString("data: " + strings.TrimSuffix(line, "\n") + "\n")
 	}
 

@@ -272,6 +272,7 @@ type fakeOps struct {
 	login     ops.Login
 	loginErr  error
 	deployErr string
+	backupLog string
 	plan      fleet.PromotionPlan
 }
 
@@ -287,6 +288,7 @@ func newFakeOps() *fakeOps {
 		backups:   nil,
 		loginErr:  nil,
 		deployErr: "",
+		backupLog: "dumping <database>\n",
 		envs: []web.Environment{
 			{Name: envDev, PromoteFrom: ""},
 			{Name: envStaging, PromoteFrom: envDev},
@@ -411,7 +413,7 @@ func (o *fakeOps) RunBackup(_ context.Context, env, site string, progress ops.Pr
 	o.record("RunBackup", env, site)
 	job := site + "-backup-manual"
 	progress(ops.Event{Kind: ops.EventJobStarted, Env: env, Site: site, Job: job, Namespace: "wp-" + env, Text: ""})
-	progress(ops.Event{Kind: ops.EventLog, Env: env, Site: site, Job: "", Namespace: "", Text: "dumping <database>\n"})
+	progress(ops.Event{Kind: ops.EventLog, Env: env, Site: site, Job: "", Namespace: "", Text: o.backupLog})
 
 	return ops.BackupRun{Job: job, Namespace: "wp-" + env}, nil
 }
