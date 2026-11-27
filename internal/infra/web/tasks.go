@@ -40,26 +40,72 @@ const (
 	eventDone = "done"
 )
 
+// msgArg is an argument of a catalogue message: a name, passed as it is, or
+// a number, written in each viewer's digits.
+type msgArg struct {
+	text  string
+	num   int
+	isNum bool
+}
+
+// names are arguments that are passed as they are.
+func names(texts ...string) []msgArg {
+	args := make([]msgArg, 0, len(texts))
+	for _, t := range texts {
+		args = append(args, msgArg{text: t, num: 0, isNum: false})
+	}
+
+	return args
+}
+
+// number is an argument written in the viewer's digits.
+func number(n int) msgArg {
+	return msgArg{text: "", num: n, isNum: true}
+}
+
+// in writes the arguments for l.
+func in(l i18n.Lang, args []msgArg) []string {
+	out := make([]string, 0, len(args))
+	for _, a := range args {
+		if a.isNum {
+			out = append(out, l.Int(a.num))
+		} else {
+			out = append(out, a.text)
+		}
+	}
+
+	return out
+}
+
 // taskEvent is one step of a task. A line and the result are kept as a
 // message key with its arguments, so each viewer reads them in their own
-// language; a log chunk is kept as it came.
+// language; a log chunk is kept as it came, and so is a failure's error,
+// which only people with deploy see.
 type taskEvent struct {
 	kind string
 	key  i18n.Key
-	args []string
+	args []msgArg
 	text string
 	ok   bool
 }
 
-// render is the event's HTML in l.
-func (e taskEvent) render(l i18n.Lang) templ.Component { //nolint:ireturn // each kind renders another component
+// render is the event's HTML in l, with a failure's error when engineering
+// (the viewer has deploy).
+//
+//nolint:ireturn // each kind renders another component
+func (e taskEvent) render(l i18n.Lang, engineering bool) templ.Component {
 	switch e.kind {
 	case eventLog:
 		return ui.TaskText(e.text)
 	case eventDone:
-		return ui.TaskResult(e.ok, l.T(e.key, e.args...))
+		text := l.T(e.key, in(l, e.args)...)
+		if !e.ok && engineering && e.text != "" {
+			text += " " + l.T(i18n.FailureDetail, e.text)
+		}
+
+		return ui.TaskResult(e.ok, text)
 	default:
-		return ui.TaskText(l.T(e.key, e.args...) + "\n")
+		return ui.TaskText(l.T(e.key, in(l, e.args)...) + "\n")
 	}
 }
 
@@ -110,7 +156,7 @@ func (t *task) since(i int) ([]taskEvent, bool, <-chan struct{}) {
 
 // line appends a line from the catalogue.
 func (t *task) line(key i18n.Key, args ...string) {
-	t.add(taskEvent{kind: eventLine, key: key, args: args, text: "", ok: false})
+	t.add(taskEvent{kind: eventLine, key: key, args: names(args...), text: "", ok: false})
 }
 
 // progress turns the operations' events into the task's: the deploy and Job
@@ -182,13 +228,26 @@ func (h *taskHub) get(id string) (*task, bool) {
 	return t, ok
 }
 
-// outcome is how a task's work ended, for its result line and the audit.
+// outcome is how a task's work ended, for its result line and the audit:
+// on success key and args say it, on failure fail names what failed in the
+// person's words and err, which the audit keeps, says why.
 type outcome struct {
 	err    error
+	fail   i18n.Key
 	key    i18n.Key
-	args   []string
+	args   []msgArg
 	commit string
 	detail string
+}
+
+// succeeded is an outcome that went well.
+func succeeded(key i18n.Key, args []msgArg, commit, detail string) outcome {
+	return outcome{err: nil, fail: i18n.TaskFailed, key: key, args: args, commit: commit, detail: detail}
+}
+
+// failed is an outcome that failed at what fail names, because of err.
+func failed(fail i18n.Key, err error, commit, detail string) outcome {
+	return outcome{err: err, fail: fail, key: fail, args: nil, commit: commit, detail: detail}
 }
 
 // start runs work in the background as a task of the person in sess, under
@@ -217,8 +276,13 @@ func (s *Server) start(
 
 		if out.err != nil {
 			rec.Result, rec.Detail = audit.ResultFailed, joinDetail(out.detail, out.err.Error())
-			args := []string{out.err.Error()}
-			t.finish(taskEvent{kind: eventDone, key: i18n.TaskFailed, args: args, text: "", ok: false}, s.now())
+
+			key := out.fail
+			if s.base.Err() != nil {
+				key = i18n.FailedStopped
+			}
+
+			t.finish(taskEvent{kind: eventDone, key: key, args: nil, text: out.err.Error(), ok: false}, s.now())
 		} else {
 			rec.Result = audit.ResultOK
 			t.finish(taskEvent{kind: eventDone, key: out.key, args: out.args, text: "", ok: true}, s.now())
@@ -287,6 +351,7 @@ func (s *Server) events(c *echo.Context) error {
 
 	ctx := c.Request().Context()
 	l := s.lang(c)
+	engineering := s.allows(sessionOf(c), t.env, t.site, access.Deploy)
 	w := c.Response()
 	rc := http.NewResponseController(w)
 
@@ -307,7 +372,7 @@ func (s *Server) events(c *echo.Context) error {
 		evs, done, changed := t.since(sent)
 
 		for _, e := range evs {
-			err := writeEvent(ctx, w, e.kind, e.render(l))
+			err := writeEvent(ctx, w, e.kind, e.render(l, engineering))
 			if err != nil {
 				return nil // the browser went away; there is nobody to tell
 			}

@@ -17,6 +17,7 @@ import (
 	"github.com/rahacloud/wpfleet/internal/infra/gitrepo"
 	"github.com/rahacloud/wpfleet/internal/infra/helm"
 	"github.com/rahacloud/wpfleet/internal/infra/web"
+	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 	"github.com/rahacloud/wpfleet/internal/ops"
 	"github.com/rahacloud/wpfleet/internal/testutil"
 )
@@ -509,13 +510,56 @@ func TestFailedDeployIsAuditedAsFailed(t *testing.T) {
 	w := h.request(http.MethodPost, "/sites/staging/blog/deploy", form(csrf), cookie)
 	events := h.events(w.Header().Get("Location"), cookie)
 	testutil.Contains(t, "events", events.Body.String(),
-		"Failed: the deploy failed: timed out waiting for the condition", `class="message bad"`)
+		"Deploying the site failed. Details: the deploy failed: timed out waiting for the condition",
+		`class="message bad"`)
 
 	h.wait()
 
 	rec := h.audit.finished(t)
 	testutil.Equal(t, "result", rec.Result, "failed")
 	testutil.Contains(t, "detail", rec.Detail, "timed out")
+}
+
+// A failure is said in the viewer's words; the error behind it, in
+// engineering terms, is only for people with deploy, and is in the audit.
+func TestFailureDetailIsForDeployOnly(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.ops.backupErr = errFake
+	cookie, csrf := h.as(platform(), "")
+
+	w := h.request(http.MethodPost, "/sites/staging/blog/backup", form(csrf), cookie)
+	task := w.Header().Get("Location")
+	h.wait()
+
+	testutil.Contains(t, "platform", h.events(task, cookie).Body.String(),
+		"The backup failed. Details: "+errFake.Error())
+
+	editorCookie, _ := h.as(editor(), "fa")
+	body := h.events(task, editorCookie).Body.String()
+	testutil.Contains(t, "editor", body, i18n.Persian.T(i18n.FailedBackup))
+	testutil.NotContains(t, "editor", body, errFake.Error())
+
+	testutil.Contains(t, "audit", h.audit.finished(t).Detail, errFake.Error())
+}
+
+// Numbers in results and on the site page are in the viewer's digits.
+func TestPersianNumbers(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	cookie, csrf := h.as(platform(), "fa")
+
+	w := h.request(http.MethodPost, "/sites/staging/blog/deploy", form(csrf), cookie)
+	body := h.events(w.Header().Get("Location"), cookie).Body.String()
+	testutil.Contains(t, "result", body, "بازبینی ۴ مستقر شد")
+
+	page := h.request(http.MethodGet, "/sites/staging/blog", nil, cookie).Body.String()
+	testutil.Contains(t, "site page", page, "۱/۱")
+
+	fleet := h.request(http.MethodGet, "/", nil, cookie).Body.String()
+	testutil.Contains(t, "fleet", fleet, "۱/۱")
 }
 
 func TestBusySiteIsRefused(t *testing.T) {

@@ -183,8 +183,23 @@ const (
 	Working
 	// TaskDone says the action finished.
 	TaskDone
-	// TaskFailed says the action failed (%s: why).
+	// TaskFailed says the action failed, when no reason below fits.
 	TaskFailed
+	// FailedSync says reading the branch failed.
+	FailedSync
+	// FailedPublish says committing the promotion failed.
+	FailedPublish
+	// FailedDeploy says the deploy failed.
+	FailedDeploy
+	// FailedBackup says the backup failed.
+	FailedBackup
+	// FailedRestore says the restore failed.
+	FailedRestore
+	// FailedStopped says the server stopped before the action ended.
+	FailedStopped
+	// FailureDetail gives the engineering reason of a failure to people with
+	// deploy (%s: the error).
+	FailureDetail
 	// Deploying says a site is being deployed (%s: site, %s: environment).
 	Deploying
 	// JobStarted says a Job started (%s: its name).
@@ -301,7 +316,14 @@ var english = [keyCount]string{
 	TaskTitle:          "%s: %s in %s",
 	Working:            "Working…",
 	TaskDone:           "Done.",
-	TaskFailed:         "Failed: %s",
+	TaskFailed:         "The action failed.",
+	FailedSync:         "Reading the latest settings from Git failed.",
+	FailedPublish:      "Publishing the version failed; nothing was deployed.",
+	FailedDeploy:       "Deploying the site failed.",
+	FailedBackup:       "The backup failed.",
+	FailedRestore:      "The restore failed.",
+	FailedStopped:      "The server stopped before the action finished.",
+	FailureDetail:      "Details: %s",
 	Deploying:          "Deploying %s in %s…",
 	JobStarted:         "Started the job %s.",
 	Published:          "Published as commit %s.",
@@ -404,7 +426,14 @@ var persian = [keyCount]string{
 	TaskTitle:          "%s: %s در %s",
 	Working:            "در حال انجام…",
 	TaskDone:           "انجام شد.",
-	TaskFailed:         "ناموفق: %s",
+	TaskFailed:         "این کار ناموفق بود.",
+	FailedSync:         "خواندن آخرین تنظیمات از Git ناموفق بود.",
+	FailedPublish:      "انتشار این نسخه ناموفق بود؛ چیزی مستقر نشد.",
+	FailedDeploy:       "استقرار سایت ناموفق بود.",
+	FailedBackup:       "پشتیبان‌گیری ناموفق بود.",
+	FailedRestore:      "بازگردانی پشتیبان ناموفق بود.",
+	FailedStopped:      "سرور پیش از پایان این کار متوقف شد.",
+	FailureDetail:      "جزئیات: %s",
 	Deploying:          "استقرار %s در %s…",
 	JobStarted:         "کار %s شروع شد.",
 	Published:          "با کامیت %s منتشر شد.",

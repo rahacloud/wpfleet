@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
@@ -15,13 +17,22 @@ func tagOrUnknown(l i18n.Lang, tag string) string {
 	return tag
 }
 
-// readyOrUnknown is a readiness, or "unknown" in l for an empty one.
+// readyOrUnknown is a readiness ("1/1") in the digits of l, or "unknown" in
+// l for an empty one.
 func readyOrUnknown(l i18n.Lang, ready string) string {
 	if ready == "" {
 		return l.T(i18n.Unknown)
 	}
 
-	return ready
+	up, all, ok := strings.Cut(ready, "/")
+	a, errA := strconv.Atoi(up)
+	b, errB := strconv.Atoi(all)
+
+	if !ok || errA != nil || errB != nil {
+		return ready
+	}
+
+	return l.Int(a) + "/" + l.Int(b)
 }
 
 // lastBackupText says when a backup last succeeded, that none ever did, or

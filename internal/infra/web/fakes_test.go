@@ -283,6 +283,7 @@ type fakeOps struct {
 	deployErr string
 	backupLog string
 	envErr    error
+	backupErr error
 	block     bool
 	plan      fleet.PromotionPlan
 	applied   *fleet.PromotionPlan
@@ -302,6 +303,7 @@ func newFakeOps() *fakeOps {
 		deployErr: "",
 		backupLog: "dumping <database>\n",
 		envErr:    nil,
+		backupErr: nil,
 		block:     false,
 		applied:   nil,
 		envs: []web.Environment{
@@ -441,7 +443,7 @@ func (o *fakeOps) RunBackup(_ context.Context, env, site string, progress ops.Pr
 	progress(ops.Event{Kind: ops.EventJobStarted, Env: env, Site: site, Job: job, Namespace: "wp-" + env, Text: ""})
 	progress(ops.Event{Kind: ops.EventLog, Env: env, Site: site, Job: "", Namespace: "", Text: o.backupLog})
 
-	return ops.BackupRun{Job: job, Namespace: "wp-" + env}, nil
+	return ops.BackupRun{Job: job, Namespace: "wp-" + env}, o.backupErr
 }
 
 func (o *fakeOps) Restore(ctx context.Context, env, site, stamp string, uploads bool, _ ops.Progress) error {

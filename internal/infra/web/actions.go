@@ -141,7 +141,7 @@ func (s *Server) deploy(c *echo.Context) error {
 
 		sha, err := s.deps.Repo.Sync(ctx)
 		if err != nil {
-			return outcome{err: fmt.Errorf("syncing the fleet repository: %w", err), key: 0, args: nil, commit: "", detail: ""}
+			return failed(i18n.FailedSync, fmt.Errorf("syncing the fleet repository: %w", err), "", "")
 		}
 
 		return s.deployAt(ctx, tk, t, sha, "")
@@ -154,13 +154,13 @@ func (s *Server) deployAt(ctx context.Context, tk *task, t target, sha, detail s
 
 	switch {
 	case err != nil:
-		return outcome{err: err, key: 0, args: nil, commit: sha, detail: detail}
+		return failed(i18n.FailedDeploy, err, sha, detail)
 	case res.Error != "":
-		return outcome{err: fmt.Errorf("%w: %s", errDeployFailed, res.Error), key: 0, args: nil, commit: sha, detail: detail}
+		return failed(i18n.FailedDeploy, fmt.Errorf("%w: %s", errDeployFailed, res.Error), sha, detail)
 	default:
-		args := []string{strconv.Itoa(res.Revision), res.Status}
+		args := []msgArg{number(res.Revision), names(res.Status)[0]}
 
-		return outcome{err: nil, key: i18n.Deployed, args: args, commit: sha, detail: detail}
+		return succeeded(i18n.Deployed, args, sha, detail)
 	}
 }
 
@@ -211,20 +211,16 @@ func (s *Server) promote(c *echo.Context) error {
 // the commit message and the audit detail describe the branch as it is, not
 // a snapshot up to a poll interval old.
 func (s *Server) publish(ctx context.Context, tk *task, t target) outcome {
-	fail := func(err error, detail string) outcome {
-		return outcome{err: err, key: 0, args: nil, commit: "", detail: detail}
-	}
-
 	tk.line(i18n.Syncing)
 
 	sha, err := s.deps.Repo.Sync(ctx)
 	if err != nil {
-		return fail(fmt.Errorf("syncing the fleet repository: %w", err), "")
+		return failed(i18n.FailedSync, fmt.Errorf("syncing the fleet repository: %w", err), "", "")
 	}
 
 	plan, err := s.deps.Ops.PlanPromotion(t.env, t.site)
 	if err != nil {
-		return fail(err, "")
+		return failed(i18n.FailedPublish, err, "", "")
 	}
 
 	detail := plan.Current.String() + " -> " + plan.Target.String()
@@ -247,10 +243,10 @@ func (s *Server) publish(ctx context.Context, tk *task, t target) outcome {
 
 		sha, err = s.deps.Repo.Sync(ctx)
 		if err != nil {
-			return fail(fmt.Errorf("syncing the fleet repository: %w", err), detail)
+			return failed(i18n.FailedSync, fmt.Errorf("syncing the fleet repository: %w", err), "", detail)
 		}
 	case err != nil:
-		return fail(fmt.Errorf("committing the promotion: %w", err), detail)
+		return failed(i18n.FailedPublish, fmt.Errorf("committing the promotion: %w", err), "", detail)
 	default:
 		tk.line(i18n.Published, ui.ShortSHA(sha))
 	}
@@ -348,10 +344,10 @@ func (s *Server) backup(c *echo.Context) error {
 	return s.start(c, t.sess, t.env, t.site, t.action, release, func(ctx context.Context, tk *task) outcome {
 		run, err := s.deps.Ops.RunBackup(ctx, t.env, t.site, tk.progress())
 		if err != nil {
-			return outcome{err: err, key: 0, args: nil, commit: "", detail: run.Job}
+			return failed(i18n.FailedBackup, err, "", run.Job)
 		}
 
-		return outcome{err: nil, key: i18n.BackedUp, args: nil, commit: "", detail: run.Job}
+		return succeeded(i18n.BackedUp, nil, "", run.Job)
 	})
 }
 
@@ -384,9 +380,9 @@ func (s *Server) restore(c *echo.Context) error {
 	return s.start(c, t.sess, t.env, t.site, t.action, release, func(ctx context.Context, tk *task) outcome {
 		err := s.deps.Ops.Restore(ctx, t.env, t.site, stamp, uploads, tk.progress())
 		if err != nil {
-			return outcome{err: err, key: 0, args: nil, commit: "", detail: detail}
+			return failed(i18n.FailedRestore, err, "", detail)
 		}
 
-		return outcome{err: nil, key: i18n.Restored, args: nil, commit: "", detail: detail}
+		return succeeded(i18n.Restored, nil, "", detail)
 	})
 }

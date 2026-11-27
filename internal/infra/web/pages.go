@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"slices"
+	"strconv"
 
 	"github.com/labstack/echo/v5"
 
@@ -352,7 +353,7 @@ func fillSite(view *ui.SiteView, d ops.SiteDetail) {
 		}
 	}
 
-	view.Ready = i18n.English.Int(ready) + "/" + i18n.English.Int(len(d.Pods))
+	view.Ready = strconv.Itoa(ready) + "/" + strconv.Itoa(len(d.Pods))
 
 	if d.Release != nil {
 		commit, _ := ops.ParseDescription(d.Release.Description)
