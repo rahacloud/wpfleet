@@ -28,6 +28,11 @@ linters:
       # Errors from this module's own packages already carry their context.
       ignore-package-globs:
         - github.com/rahacloud/wpfleet/*
+        # An echo handler returns what the response methods return, and the
+        # error handler reads echo's own errors; templ's Render writes the
+        # response the same way. Wrapping them adds nothing.
+        - github.com/labstack/echo/v5
+        - github.com/a-h/templ
       ignore-sigs:
         - .Errorf(
         - errors.New(

@@ -50,3 +50,6 @@ jobs:
       - run: go build ./...
       - run: go test -race ./... -covermode=atomic -coverprofile=coverage.out
       - run: go mod tidy && git diff --exit-code go.mod go.sum
+      # The templ components are formatted and their generated Go is
+      # committed; both must match what just generate writes.
+      - run: go tool templ fmt -fail internal/infra/web/ui && go tool templ generate && git diff --exit-code

@@ -1,0 +1,357 @@
+// Package web is wpfleet serve's HTTP side: the echo routes, the sign-in
+// flow, the pages and fragments of the UI, the actions as POSTs with CSRF
+// tokens, their progress over server-sent events, the Git webhook, health
+// and metrics. It depends on small interfaces for sign-in, sessions, access
+// rules, the fleet clone and the operations, so its tests run on fakes and
+// the serve command adapts the real packages to them.
+package web
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/a-h/templ"
+	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
+
+	"github.com/rahacloud/wpfleet/internal/infra/web/ui"
+	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
+)
+
+// maxBody is the largest request body the server reads: forms and webhook
+// payloads are small.
+const maxBody = 1 << 20
+
+// sessionKey is where the session of a signed-in request is kept on the
+// echo context.
+const sessionKey = "wpfleet.session"
+
+// contentSecurityPolicy lets the pages load only their own scripts, styles
+// and streams. form-action allows any https or http origin because "Open
+// admin" posts here and is redirected to the site's own address, and
+// browsers check that redirect against form-action.
+const contentSecurityPolicy = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; " +
+	"connect-src 'self'; form-action 'self' https: http:; frame-ancestors 'none'; base-uri 'none'"
+
+// Server is wpfleet serve's HTTP handler. It is an http.Handler; the metrics
+// are on a separate handler so they can listen on another address.
+type Server struct {
+	deps    Deps
+	echo    *echo.Echo
+	log     *slog.Logger
+	now     func() time.Time
+	tasks   *taskHub
+	metrics *metrics
+	syncer  *syncer
+
+	// base is the context the actions run under, canceled when Shutdown
+	// gives up waiting for them.
+	base   context.Context //nolint:containedctx // the actions outlive their requests and end with the server
+	cancel context.CancelFunc
+	wg     sync.WaitGroup
+}
+
+// New builds the server from its dependencies.
+func New(d Deps) (*Server, error) {
+	err := d.validate()
+	if err != nil {
+		return nil, err
+	}
+
+	log := d.Logger
+	if log == nil {
+		log = slog.Default()
+	}
+
+	now := d.Now
+	if now == nil {
+		now = time.Now
+	}
+
+	base, cancel := context.WithCancel(context.Background())
+	m := newMetrics()
+
+	s := &Server{
+		deps:    d,
+		echo:    echo.New(),
+		log:     log,
+		now:     now,
+		tasks:   newTaskHub(now),
+		metrics: m,
+		syncer:  nil,
+		base:    base,
+		cancel:  cancel,
+		wg:      sync.WaitGroup{},
+	}
+	s.syncer = newSyncer(d.Repo, log, m, &s.wg)
+	s.routes()
+
+	return s, nil
+}
+
+// ServeHTTP serves the UI, the sign-in flow, the webhook and the health
+// checks.
+func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.echo.ServeHTTP(w, r)
+}
+
+// MetricsHandler serves the Prometheus metrics.
+func (s *Server) MetricsHandler() http.Handler {
+	return s.metrics.handler()
+}
+
+// Shutdown waits for the running actions and Git syncs to end. When ctx ends
+// first it cancels them and returns ctx's error.
+func (s *Server) Shutdown(ctx context.Context) error {
+	done := make(chan struct{})
+
+	go func() {
+		s.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		s.cancel()
+
+		return nil
+	case <-ctx.Done():
+		s.cancel()
+
+		return fmt.Errorf("waiting for the running actions: %w", ctx.Err())
+	}
+}
+
+// routes registers every route.
+func (s *Server) routes() {
+	e := s.echo
+	e.Logger = s.log
+	e.HTTPErrorHandler = s.handleError
+
+	e.Use(middleware.Recover(), middleware.BodyLimit(maxBody), securityHeaders)
+
+	e.GET("/healthz", s.healthz)
+	e.GET("/readyz", s.readyz)
+	e.StaticFS("/static", ui.Static(), cacheStatic)
+
+	e.GET("/auth/login", s.login)
+	e.GET("/auth/callback", s.callback)
+	e.POST("/auth/logout", s.logout)
+	e.POST("/hooks/git", s.hook)
+
+	g := e.Group("", s.requireSession)
+	g.GET("/", s.fleet)
+	g.POST("/lang", s.setLang)
+	g.GET("/tasks/:id", s.taskPage)
+	g.GET("/events", s.events)
+
+	site := g.Group("/sites/:env/:site")
+	site.GET("", s.sitePage)
+	site.GET("/status", s.statusFragment)
+	site.GET("/diff", s.diffFragment)
+	site.GET("/history", s.historyFragment)
+	site.GET("/backups", s.backupsFragment)
+	site.POST("/deploy", s.deploy)
+	site.POST("/promote", s.promote)
+	site.POST("/admin", s.admin)
+	site.POST("/backup", s.backup)
+	site.POST("/restore", s.restore)
+}
+
+// securityHeaders sets the headers every response carries; dynamic pages
+// are never cached.
+func securityHeaders(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c *echo.Context) error {
+		h := c.Response().Header()
+		h.Set("Content-Security-Policy", contentSecurityPolicy)
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Cross-Origin-Opener-Policy", "same-origin")
+		h.Set("Cache-Control", "no-store")
+
+		return next(c)
+	}
+}
+
+// cacheStatic lets browsers keep the static files for a day; a new htmx is a
+// new file name.
+func cacheStatic(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c *echo.Context) error {
+		c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+
+		return next(c)
+	}
+}
+
+// requireSession lets a signed-in request through with its session on the
+// context. A page request without one is sent to sign in and comes back;
+// htmx gets HX-Redirect; anything else gets 401.
+func (s *Server) requireSession(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c *echo.Context) error {
+		sess, ok := s.deps.Sessions.Get(c.Request())
+		if ok {
+			c.Set(sessionKey, sess)
+
+			return next(c)
+		}
+
+		r := c.Request()
+		target := "/auth/login?return=" + url.QueryEscape(r.URL.RequestURI())
+
+		switch {
+		case r.Header.Get("Hx-Request") == "true":
+			c.Response().Header().Set("Hx-Redirect", "/auth/login")
+
+			return c.NoContent(http.StatusUnauthorized)
+		case r.Method == http.MethodGet && r.URL.Path != "/events":
+			return c.Redirect(http.StatusSeeOther, target)
+		default:
+			return s.message(c, http.StatusUnauthorized, i18n.SignIn, i18n.SignInFailed, true, "/auth/login", i18n.SignIn)
+		}
+	}
+}
+
+// sessionOf is the session requireSession put on the context.
+func sessionOf(c *echo.Context) Session {
+	sess, _ := c.Get(sessionKey).(Session)
+
+	return sess
+}
+
+// lang is the request's language: the person's choice, else the browser's.
+func (s *Server) lang(c *echo.Context) i18n.Lang {
+	if l, ok := i18n.Parse(sessionOf(c).Lang); ok {
+		return l
+	}
+
+	return i18n.Match(c.Request().Header.Get("Accept-Language"))
+}
+
+// page is the layout's view of a request.
+func (s *Server) page(c *echo.Context, title string) ui.Page {
+	sess := sessionOf(c)
+
+	return ui.Page{
+		L:      s.lang(c),
+		Title:  title,
+		User:   displayName(sess.Identity),
+		CSRF:   sess.CSRF,
+		Return: c.Request().URL.RequestURI(),
+	}
+}
+
+// displayName is how the header names a person.
+func displayName(id Identity) string {
+	if id.Email != "" {
+		return id.Email
+	}
+
+	return id.Name
+}
+
+// render writes a component as an HTML response.
+func render(c *echo.Context, status int, comp templ.Component) error {
+	c.Response().Header().Set(echo.HeaderContentType, echo.MIMETextHTMLCharsetUTF8)
+	c.Response().WriteHeader(status)
+
+	return comp.Render(c.Request().Context(), c.Response())
+}
+
+// message renders a page that says one thing.
+func (s *Server) message(
+	c *echo.Context, status int, title, text i18n.Key, bad bool, link string, linkText i18n.Key,
+) error {
+	l := s.lang(c)
+	m := ui.Message{Title: l.T(title), Text: l.T(text), Bad: bad, Link: link, LinkText: ""}
+
+	if link != "" {
+		m.LinkText = l.T(linkText)
+	}
+
+	return render(c, status, ui.MessagePage(s.page(c, m.Title), m))
+}
+
+// refuse renders a refusal with a text already in the person's language.
+func (s *Server) refuse(c *echo.Context, status int, text string, back string) error {
+	l := s.lang(c)
+	m := ui.Message{Title: l.T(i18n.RefusedTitle), Text: text, Bad: true, Link: back, LinkText: ""}
+
+	if back != "" {
+		m.LinkText = l.T(i18n.Back)
+	}
+
+	return render(c, status, ui.MessagePage(s.page(c, m.Title), m))
+}
+
+// handleError renders the errors handlers return and the router's 404 and
+// 405 as a page in the person's language.
+func (s *Server) handleError(c *echo.Context, err error) {
+	resp, uerr := echo.UnwrapResponse(c.Response())
+	if uerr == nil && resp.Committed {
+		s.log.WarnContext(c.Request().Context(), "error after the response started", "path", c.Path(), "error", err)
+
+		return
+	}
+
+	status := http.StatusInternalServerError
+	// errors.AsType needs a type that is an error; HTTPStatusCoder is not.
+	var coder echo.HTTPStatusCoder
+	if errors.As(err, &coder) {
+		status = coder.StatusCode()
+	}
+
+	title, text := i18n.ErrorTitle, i18n.ServerError
+
+	switch status {
+	case http.StatusNotFound:
+		title, text = i18n.NotFoundTitle, i18n.NotFound
+	case http.StatusBadRequest, http.StatusMethodNotAllowed, http.StatusRequestEntityTooLarge:
+		text = i18n.BadRequest
+	case http.StatusForbidden:
+		title, text = i18n.RefusedTitle, i18n.Forbidden
+	default:
+		s.log.ErrorContext(c.Request().Context(), "request failed", "path", c.Request().URL.Path, "error", err)
+	}
+
+	rerr := s.message(c, status, title, text, true, "/", i18n.SitesTitle)
+	if rerr != nil {
+		s.log.WarnContext(c.Request().Context(), "writing the error page", "error", rerr)
+	}
+}
+
+// healthz answers while the process serves.
+func (s *Server) healthz(c *echo.Context) error {
+	return c.String(http.StatusOK, "ok")
+}
+
+// readyz answers once the clone has a commit, so the UI never shows an empty
+// fleet.
+func (s *Server) readyz(c *echo.Context) error {
+	if s.deps.Repo.Head() == "" {
+		return c.String(http.StatusServiceUnavailable, "the fleet repository is not synced yet")
+	}
+
+	return c.String(http.StatusOK, "ok")
+}
+
+// safeReturn keeps a return path only when it stays on this server.
+func safeReturn(p string) string {
+	if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(p, `/\`) {
+		return "/"
+	}
+
+	u, err := url.Parse(p)
+	if err != nil || u.Scheme != "" || u.Host != "" {
+		return "/"
+	}
+
+	return u.RequestURI()
+}

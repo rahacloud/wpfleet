@@ -5,6 +5,11 @@ default:
 build:
     go build -o wpfleet ./cmd/wpfleet
 
+# Format and generate the templ components; commit what it writes
+generate:
+    go tool templ fmt internal/infra/web/ui
+    go tool templ generate
+
 # Run every test with the race detector
 test:
     go test -race ./... -covermode=atomic -coverprofile=coverage.out

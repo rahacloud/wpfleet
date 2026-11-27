@@ -38,6 +38,7 @@ The pictures come from a demo fleet of three invented sites on a local kind clus
 
 ```bash
 just build    # ./wpfleet
+just generate # the templ components of the web UI
 just test
 just lint     # golangci-lint and helm lint
 ```
