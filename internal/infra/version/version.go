@@ -34,7 +34,9 @@ func Short() string {
 }
 
 // resolve prefers the stamped version and commit; with neither it is the
-// fallback.
+// fallback. A version that already names the commit, as `git describe
+// --always` does without a tag ("8c38585") and after one
+// ("v0.1.0-3-g8c38585"), is not followed by the commit again.
 func resolve(version, commit, fallback string) string {
 	version, commit = strings.TrimSpace(version), strings.TrimSpace(commit)
 
@@ -48,8 +50,8 @@ func resolve(version, commit, fallback string) string {
 		parts = append(parts, version)
 	}
 
-	if commit != "" {
-		parts = append(parts, "rev", commit[:min(len(commit), shortCommit)])
+	if short := commit[:min(len(commit), shortCommit)]; short != "" && !strings.Contains(version, short) {
+		parts = append(parts, "rev", short)
 	}
 
 	return strings.Join(parts, " ")
