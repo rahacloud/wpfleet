@@ -108,7 +108,9 @@ type SiteCard struct {
 // closest to it.
 func (c SiteCard) Primary() CardEnv {
 	if len(c.Envs) == 0 {
-		return CardEnv{Env: "", Live: false, Health: HealthUnknown, Host: "", URL: "", CanLogin: false, AdminBlockedBy: ""}
+		return CardEnv{
+			Env: "", Label: "", Live: false, Health: HealthUnknown, Host: "", URL: "", CanLogin: false, AdminBlockedBy: "",
+		}
 	}
 
 	return c.Envs[0]
@@ -116,8 +118,10 @@ func (c SiteCard) Primary() CardEnv {
 
 // CardEnv is one site in one environment on its card.
 type CardEnv struct {
-	// Env names the environment.
+	// Env names the environment, for paths.
 	Env string
+	// Label names the environment to people, in the page's language.
+	Label string
 	// Live says this is the environment visitors see.
 	Live bool
 	// Health is how the site is doing there.
@@ -136,6 +140,8 @@ type CardEnv struct {
 type PublishOffer struct {
 	// From is the environment with the newer version; To the one it goes to.
 	From, To string
+	// FromLabel and ToLabel name them to people, in the page's language.
+	FromLabel, ToLabel string
 }
 
 // BackupStatus is the last backup of a site, loaded into its card after the
@@ -156,6 +162,8 @@ type BackupStatus struct {
 type SiteView struct {
 	// Env and Site name the site.
 	Env, Site string
+	// EnvLabel names the environment to people, in the page's language.
+	EnvLabel string
 	// Live says the environment is the one visitors see.
 	Live bool
 	// Host is the site's address and URL its link.
@@ -167,6 +175,8 @@ type SiteView struct {
 	// PromoteFrom is the environment this one publishes from; empty when
 	// none.
 	PromoteFrom string
+	// PromoteFromLabel names it to people, in the page's language.
+	PromoteFromLabel string
 	// FromTag is the tag in PromoteFrom.
 	FromTag string
 	// CanPublish shows "Publish <from> to <env>": deploy here, view in
@@ -228,8 +238,10 @@ type ReleaseEntry struct {
 
 // EnvLink leads to a site in another environment.
 type EnvLink struct {
-	// Env names the environment.
+	// Env names the environment, for the path.
 	Env string
+	// Label names the environment to people, in the page's language.
+	Label string
 	// Live says it is the environment visitors see.
 	Live bool
 }
@@ -286,6 +298,8 @@ func (v RestoreView) Restorable() bool {
 type TaskView struct {
 	// Env and Site name the site.
 	Env, Site string
+	// EnvLabel names the environment to people, in the page's language.
+	EnvLabel string
 	// Action is what runs.
 	Action Action
 	// EventsURL is the server-sent events stream of the task.
@@ -329,6 +343,9 @@ type PublishView struct {
 	Env, Site string
 	// From is the environment the version comes from.
 	From string
+	// EnvLabel and FromLabel name Env and From to people, in the page's
+	// language.
+	EnvLabel, FromLabel string
 	// Live says Env is the environment visitors see.
 	Live bool
 	// Changed says From runs another version; when false there is nothing

@@ -17,6 +17,11 @@ environments:
   - name: staging
     namespace: wp-staging
     promoteFrom: development
+    # How the web UI names this environment to people; optional, the name
+    # otherwise.
+    label:
+      en: Preview
+      fa: پیش‌نمایش
 backup:
   s3:
     endpoint: https://s3.example.com

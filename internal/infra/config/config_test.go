@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rahacloud/wpfleet/internal/infra/config"
@@ -22,6 +23,9 @@ environments:
     namespace: wp-staging
     values: values/staging
     promoteFrom: development
+    label:
+      en: Preview
+      fa: آزمایشی
 backup:
   s3:
     endpoint: https://s3.example.com
@@ -58,6 +62,8 @@ func TestLoad(t *testing.T) {
 	testutil.Equal(t, "environments", len(cfg.Environments), 2)
 	testutil.Equal(t, "promoteFrom", cfg.Environments[1].PromoteFrom, "development")
 	testutil.Equal(t, "context", cfg.Environments[0].Context, "dev")
+	testutil.Equal(t, "no label", cfg.Environments[0].Label, config.Label{EN: "", FA: ""})
+	testutil.Equal(t, "label", cfg.Environments[1].Label, config.Label{EN: "Preview", FA: "آزمایشی"})
 }
 
 func TestFleet(t *testing.T) {
@@ -83,6 +89,7 @@ func TestFleet(t *testing.T) {
 		WPCLI:    config.WPCLI{URL: "", SHA512: "", AllowUnverified: false},
 		Environments: []config.Environment{{
 			Name: "a", Namespace: "x", Kubeconfig: "/etc/kube", Context: "", Values: "/srv/a", PromoteFrom: "",
+			Label: config.Label{EN: "", FA: ""},
 		}},
 		Backup: config.Backup{S3: config.S3{Endpoint: "", Bucket: "", Region: ""}},
 		Server: config.DefaultServer(),
@@ -139,6 +146,12 @@ func TestValidate(t *testing.T) {
   - {name: a, namespace: x, promoteFrom: b}`,
 		"promotes from itself": `environments:
   - {name: a, namespace: x, promoteFrom: a}`,
+		"label.en longer than 40 characters": `environments:
+  - {name: a, namespace: x, label: {en: ` + strings.Repeat("a", 41) + `}}`,
+		"control character in label.fa": `environments:
+  - {name: a, namespace: x, label: {fa: "a\nb"}}`,
+		"blank label.en": `environments:
+  - {name: a, namespace: x, label: {en: "  "}}`,
 	}
 
 	for want, content := range tests {

@@ -477,14 +477,14 @@ func siteCard(l i18n.Lang, c SiteCard, csrf string) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\"><span dir=\"ltr\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\"><span dir=\"auto\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var27 string
-			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(e.Env)
+			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(e.Label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 99, Col: 80}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 99, Col: 83}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 			if templ_7745c5c3_Err != nil {
@@ -531,7 +531,7 @@ func siteCard(l i18n.Lang, c SiteCard, csrf string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if e.CanLogin {
-				templ_7745c5c3_Err = adminForm(l, e.Env, c.Site, csrf, i == 0, e.AdminBlockedBy).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = adminForm(l, e, c.Site, csrf, i == 0).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -603,9 +603,9 @@ func siteCard(l i18n.Lang, c SiteCard, csrf string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var34 string
-			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(l.T(i18n.NewerWaiting, c.Publish.From))
+			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(l.T(i18n.NewerWaiting, c.Publish.FromLabel))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 118, Col: 63}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 118, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -629,9 +629,9 @@ func siteCard(l i18n.Lang, c SiteCard, csrf string) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var36 string
-			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(l.T(i18n.Publish, c.Publish.From, c.Publish.To))
+			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(l.T(i18n.Publish, c.Publish.FromLabel, c.Publish.ToLabel))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 120, Col: 179}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 120, Col: 189}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 			if templ_7745c5c3_Err != nil {
@@ -654,7 +654,7 @@ func siteCard(l i18n.Lang, c SiteCard, csrf string) templ.Component {
 // whose answer redirects a new tab to the one-time link. While an action
 // that refuses a login runs (only a restore), the button is disabled and a
 // line says why.
-func adminForm(l i18n.Lang, env, site, csrf string, primary bool, blockedBy Action) templ.Component {
+func adminForm(l i18n.Lang, e CardEnv, site, csrf string, primary bool) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -676,9 +676,9 @@ func adminForm(l i18n.Lang, env, site, csrf string, primary bool, blockedBy Acti
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var38 string
-		templ_7745c5c3_Var38, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(ActionPath(env, site, "admin"))).ResolveURL(ctx)
+		templ_7745c5c3_Var38, templ_7745c5c3_Err = templruntime.NewAttributeExpression(templ.SafeURL(ActionPath(e.Env, site, "admin"))).ResolveURL(ctx)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 132, Col: 75}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 132, Col: 77}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var38)
 		if templ_7745c5c3_Err != nil {
@@ -728,9 +728,9 @@ func adminForm(l i18n.Lang, env, site, csrf string, primary bool, blockedBy Acti
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var42 string
-			templ_7745c5c3_Var42, templ_7745c5c3_Err = templruntime.NewAttributeExpression(newTab(l, l.T(i18n.OpenAdminOf, site, env))).Resolve(ctx)
+			templ_7745c5c3_Var42, templ_7745c5c3_Err = templruntime.NewAttributeExpression(newTab(l, l.T(i18n.OpenAdminOf, site, e.Label))).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 138, Col: 59}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 138, Col: 63}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var42)
 			if templ_7745c5c3_Err != nil {
@@ -740,15 +740,15 @@ func adminForm(l i18n.Lang, env, site, csrf string, primary bool, blockedBy Acti
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			if blockedBy != "" {
+			if e.AdminBlockedBy != "" {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, " disabled aria-describedby=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var43 string
-				templ_7745c5c3_Var43, templ_7745c5c3_Err = templruntime.NewAttributeExpression("blocked-" + env + "-" + site).Resolve(ctx)
+				templ_7745c5c3_Var43, templ_7745c5c3_Err = templruntime.NewAttributeExpression("blocked-" + e.Env + "-" + site).Resolve(ctx)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 141, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 141, Col: 54}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var43)
 				if templ_7745c5c3_Err != nil {
@@ -786,15 +786,15 @@ func adminForm(l i18n.Lang, env, site, csrf string, primary bool, blockedBy Acti
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		if blockedBy != "" {
+		if e.AdminBlockedBy != "" {
 			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "<p id=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var45 string
-			templ_7745c5c3_Var45, templ_7745c5c3_Err = templruntime.NewAttributeExpression("blocked-" + env + "-" + site).Resolve(ctx)
+			templ_7745c5c3_Var45, templ_7745c5c3_Err = templruntime.NewAttributeExpression("blocked-" + e.Env + "-" + site).Resolve(ctx)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 145, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 145, Col: 42}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ_7745c5c3_Var45)
 			if templ_7745c5c3_Err != nil {
@@ -805,9 +805,9 @@ func adminForm(l i18n.Lang, env, site, csrf string, primary bool, blockedBy Acti
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var46 string
-			templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(l.T(i18n.AdminBlocked, blockedBy.Label(l)))
+			templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(l.T(i18n.AdminBlocked, e.AdminBlockedBy.Label(l)))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 145, Col: 103}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 145, Col: 112}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 			if templ_7745c5c3_Err != nil {

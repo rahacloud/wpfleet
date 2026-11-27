@@ -40,19 +40,32 @@ const (
 	eventDone = "done"
 )
 
-// msgArg is an argument of a catalogue message: a name, passed as it is, or
-// a number, written in each viewer's digits.
+// argKind says how a catalogue message's argument is written for a viewer.
+type argKind int
+
+// The kinds of arguments.
+const (
+	// argName is passed as it is.
+	argName argKind = iota
+	// argNumber is written in the viewer's digits.
+	argNumber
+	// argEnv is an environment, named by its label in the viewer's
+	// language.
+	argEnv
+)
+
+// msgArg is an argument of a catalogue message.
 type msgArg struct {
-	text  string
-	num   int
-	isNum bool
+	kind argKind
+	text string
+	num  int
 }
 
 // names are arguments that are passed as they are.
 func names(texts ...string) []msgArg {
 	args := make([]msgArg, 0, len(texts))
 	for _, t := range texts {
-		args = append(args, msgArg{text: t, num: 0, isNum: false})
+		args = append(args, msgArg{kind: argName, text: t, num: 0})
 	}
 
 	return args
@@ -60,16 +73,24 @@ func names(texts ...string) []msgArg {
 
 // number is an argument written in the viewer's digits.
 func number(n int) msgArg {
-	return msgArg{text: "", num: n, isNum: true}
+	return msgArg{kind: argNumber, text: "", num: n}
 }
 
-// in writes the arguments for l.
-func in(l i18n.Lang, args []msgArg) []string {
+// env is an environment, named in the viewer's language.
+func env(name string) msgArg {
+	return msgArg{kind: argEnv, text: name, num: 0}
+}
+
+// in writes the arguments for l, the environments by their labels in envs.
+func in(l i18n.Lang, envs envNames, args []msgArg) []string {
 	out := make([]string, 0, len(args))
 	for _, a := range args {
-		if a.isNum {
+		switch a.kind {
+		case argNumber:
 			out = append(out, l.Int(a.num))
-		} else {
+		case argEnv:
+			out = append(out, envs.of(a.text))
+		case argName:
 			out = append(out, a.text)
 		}
 	}
@@ -89,9 +110,9 @@ func say(key i18n.Key, args ...msgArg) message {
 	return message{key: key, args: args}
 }
 
-// in writes the message in l.
-func (m message) in(l i18n.Lang) string {
-	return l.T(m.key, in(l, m.args)...)
+// in writes the message in l, the environments by their labels in envs.
+func (m message) in(l i18n.Lang, envs envNames) string {
+	return l.T(m.key, in(l, envs, m.args)...)
 }
 
 // taskEvent is one step of a task. A line and the result are kept as
@@ -109,32 +130,35 @@ type taskEvent struct {
 
 // say is the event's message for the viewer: the engineering one for
 // people with deploy when there is one, else the plain one.
-func (e taskEvent) say(l i18n.Lang, engineering bool) string {
+func (e taskEvent) say(l i18n.Lang, envs envNames, engineering bool) string {
 	if engineering && e.eng != nil {
-		return e.eng.in(l)
+		return e.eng.in(l, envs)
 	}
 
-	return e.plain.in(l)
+	return e.plain.in(l, envs)
 }
 
-// render is the event's HTML in l. The result leads back to the site at
-// back and names support; a failure's error is in it only when engineering
-// (the viewer has deploy).
+// render is the event's HTML in l, with the environments named by their
+// labels in envs. The result leads back to the site at back and names
+// support; a failure's error is in it only when engineering (the viewer has
+// deploy).
 //
 //nolint:ireturn // each kind renders another component
-func (e taskEvent) render(l i18n.Lang, engineering bool, back string, support ui.Support) templ.Component {
+func (e taskEvent) render(
+	l i18n.Lang, envs envNames, engineering bool, back string, support ui.Support,
+) templ.Component {
 	switch e.kind {
 	case eventLog:
 		return ui.TaskText(e.text)
 	case eventDone:
-		o := ui.TaskOutcome{OK: e.ok, Text: e.say(l, engineering), Detail: "", Back: back, Support: support}
+		o := ui.TaskOutcome{OK: e.ok, Text: e.say(l, envs, engineering), Detail: "", Back: back, Support: support}
 		if !e.ok && engineering {
 			o.Detail = e.text
 		}
 
 		return ui.TaskResult(l, o)
 	default:
-		return ui.TaskStep(e.say(l, engineering))
+		return ui.TaskStep(e.say(l, envs, engineering))
 	}
 }
 
@@ -197,7 +221,8 @@ func (t *task) progress() ops.Progress {
 	return func(e ops.Event) {
 		switch e.Kind {
 		case ops.EventDeploying:
-			t.lineFor(say(i18n.UpdatingSite, names(e.Site, e.Env)...), say(i18n.Deploying, names(e.Site, e.Env)...))
+			site := names(e.Site)[0]
+			t.lineFor(say(i18n.UpdatingSite, site, env(e.Env)), say(i18n.Deploying, site, env(e.Env)))
 		case ops.EventJobStarted:
 			plain := say(i18n.SavingContent)
 			if t.action == ui.ActionRestore {
@@ -378,8 +403,9 @@ func (s *Server) taskPage(c *echo.Context) error {
 	}
 
 	l := s.lang(c)
-	view := ui.TaskView{Env: t.env, Site: t.site, Action: t.action, EventsURL: "/events?task=" + t.id}
-	title := l.T(i18n.TaskTitle, t.action.Label(l), t.site, t.env)
+	label := s.envLabels(l).of(t.env)
+	view := ui.TaskView{Env: t.env, Site: t.site, EnvLabel: label, Action: t.action, EventsURL: "/events?task=" + t.id}
+	title := l.T(i18n.TaskTitle, t.action.Label(l), t.site, label)
 
 	return render(c, http.StatusOK, ui.TaskPage(s.page(c, title), view))
 }
@@ -395,6 +421,7 @@ func (s *Server) events(c *echo.Context) error {
 	ctx := c.Request().Context()
 	l := s.lang(c)
 	engineering := s.allows(sessionOf(c), t.env, t.site, access.Deploy)
+	envs := s.envLabels(l)
 	back := ui.SitePath(t.env, t.site)
 	w := c.Response()
 	rc := http.NewResponseController(w)
@@ -416,7 +443,7 @@ func (s *Server) events(c *echo.Context) error {
 		evs, done, changed := t.since(sent)
 
 		for _, e := range evs {
-			err := writeEvent(ctx, w, e.kind, e.render(l, engineering, back, s.support()))
+			err := writeEvent(ctx, w, e.kind, e.render(l, envs, engineering, back, s.support()))
 			if err != nil {
 				return nil // the browser went away; there is nobody to tell
 			}

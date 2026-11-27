@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/knadh/koanf/parsers/yaml"
 	"github.com/knadh/koanf/providers/env/v2"
@@ -112,7 +114,22 @@ type Environment struct {
 	Values string `json:"values" koanf:"values"`
 	// PromoteFrom is the environment images are promoted from.
 	PromoteFrom string `json:"promoteFrom" koanf:"promoteFrom"`
+	// Label is how the web UI names the environment to people, per
+	// language; optional, the name is shown where a language has none.
+	Label Label `json:"label" koanf:"label"`
 }
+
+// Label is a short name in each language of the web UI.
+type Label struct {
+	// EN is the English name.
+	EN string `json:"en" koanf:"en"`
+	// FA is the Persian name.
+	FA string `json:"fa" koanf:"fa"`
+}
+
+// MaxLabelLength is the longest label of an environment, in characters: a
+// word or two, which fits a button.
+const MaxLabelLength = 40
 
 // Backup configures where the backups are.
 type Backup struct {
@@ -233,7 +250,7 @@ func transformEnv(canon map[string]string) func(key, value string) (string, any)
 }
 
 // Validate checks that environment names are unique and non-empty, every
-// environment has a namespace, every promoteFrom names another existing
+// environment has a namespace and short labels on one line, every promoteFrom names another existing
 // environment, and the server section has no negative duration and no
 // access rule that cannot match. ValidateServer checks the rest of the
 // server section.
@@ -255,6 +272,8 @@ func (c Config) Validate() error {
 		if e.Namespace == "" {
 			errs = append(errs, fmt.Errorf("%w: environment %q has no namespace", ErrInvalid, e.Name))
 		}
+
+		errs = append(errs, checkLabel(e.Name, "en", e.Label.EN), checkLabel(e.Name, "fa", e.Label.FA))
 	}
 
 	for _, e := range c.Environments {
@@ -270,6 +289,22 @@ func (c Config) Validate() error {
 	errs = append(errs, c.Server.validate(seen)...)
 
 	return errors.Join(errs...)
+}
+
+// checkLabel checks that an environment's label in one language is short
+// and on one line; an empty label is fine.
+func checkLabel(env, lang, label string) error {
+	switch {
+	case utf8.RuneCountInString(label) > MaxLabelLength:
+		return fmt.Errorf("%w: environment %q has a label.%s longer than %d characters",
+			ErrInvalid, env, lang, MaxLabelLength)
+	case strings.ContainsFunc(label, unicode.IsControl):
+		return fmt.Errorf("%w: environment %q has a control character in label.%s", ErrInvalid, env, lang)
+	case label != "" && strings.TrimSpace(label) == "":
+		return fmt.Errorf("%w: environment %q has a blank label.%s", ErrInvalid, env, lang)
+	default:
+		return nil
+	}
 }
 
 // Fleet turns the configuration of the fleet in dir into the domain model,

@@ -15,7 +15,7 @@ templ SitePage(p Page, s SiteView) {
 			<span dir="ltr">{ s.Site }</span>
 			{ " " }
 			<span class="wf-muted wf-page-env-title">
-				<span dir="ltr">{ s.Env }</span>
+				<span dir="auto">{ s.EnvLabel }</span>
 				if s.Live {
 					{ " " }
 					<span class="wf-badge">{ p.L.T(i18n.LiveBadge) }</span>
@@ -55,7 +55,7 @@ templ SitePage(p Page, s SiteView) {
 					<span class="wf-muted">{ p.L.T(i18n.OtherEnvironments) }</span>
 					for _, o := range s.Others {
 						<a href={ templ.SafeURL(SitePath(o.Env, s.Site)) }>
-							<span dir="ltr">{ o.Env }</span>
+							<span dir="auto">{ o.Label }</span>
 							if o.Live {
 								{ " " }
 								<span class="wf-badge">{ p.L.T(i18n.LiveBadge) }</span>
@@ -110,8 +110,8 @@ templ siteActions(l i18n.Lang, s SiteView) {
 		}
 		if s.CanPublish {
 			<div class="wf-card wf-stack">
-				<a class="wf-btn wf-btn-secondary" href={ templ.SafeURL(ActionPath(s.Env, s.Site, "promote")) } data-action="promote" aria-describedby="help-publish">{ l.T(i18n.Publish, s.PromoteFrom, s.Env) }</a>
-				<p id="help-publish" class="wf-help">{ l.T(i18n.PublishHelp, s.PromoteFrom, s.Env) }</p>
+				<a class="wf-btn wf-btn-secondary" href={ templ.SafeURL(ActionPath(s.Env, s.Site, "promote")) } data-action="promote" aria-describedby="help-publish">{ l.T(i18n.Publish, s.PromoteFromLabel, s.EnvLabel) }</a>
+				<p id="help-publish" class="wf-help">{ l.T(i18n.PublishHelp, s.PromoteFromLabel, s.EnvLabel) }</p>
 			</div>
 		}
 		if s.Perms.Backup {
@@ -144,7 +144,7 @@ templ technical(l i18n.Lang, s SiteView) {
 				<dt>{ l.T(i18n.ImageLabel) }</dt>
 				<dd><code dir="ltr">{ s.Image }</code></dd>
 				if s.PromoteFrom != "" && s.FromTag != s.Tag {
-					<dt>{ l.T(i18n.NewerIn, s.PromoteFrom) }</dt>
+					<dt>{ l.T(i18n.NewerIn, s.PromoteFromLabel) }</dt>
 					<dd><code dir="ltr">{ tagOrUnknown(l, s.FromTag) }</code></dd>
 				}
 				<dt>{ l.T(i18n.ReadyLabel) }</dt>

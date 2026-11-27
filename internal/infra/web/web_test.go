@@ -523,11 +523,55 @@ func TestHomeCards(t *testing.T) {
 
 	// Without a promoteFrom chain the UI cannot tell which environment
 	// visitors see, so none is marked live.
-	h.ops.envs = []web.Environment{{Name: envDev, PromoteFrom: ""}, {Name: envStaging, PromoteFrom: ""}}
+	h.ops.envs = []web.Environment{
+		{Name: envDev, PromoteFrom: "", Label: nil}, {Name: envStaging, PromoteFrom: "", Label: nil},
+	}
 	cookie, _ = h.as(platform(), "")
 	page = h.request(http.MethodGet, "/", nil, cookie).Body.String()
 	testutil.NotContains(t, "no chain", page, ">Live<")
 	testutil.Contains(t, "no chain", page, `action="/sites/development/blog/admin"`)
+}
+
+// An environment's label names it to people in each language, on the
+// cards, the site page, the publish page and an action's steps; the paths
+// keep the name.
+func TestEnvironmentLabels(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	label := func(en, fa string) map[i18n.Lang]string { return map[i18n.Lang]string{i18n.English: en, i18n.Persian: fa} }
+	h.ops.envs = []web.Environment{
+		{Name: envDev, PromoteFrom: "", Label: label("Draft", "طرح")},
+		{Name: envStaging, PromoteFrom: envDev, Label: label("Preview", "آزمایشی")},
+		{Name: envProd, PromoteFrom: envStaging, Label: label("Live site", "")},
+	}
+	cookie, csrf := h.as(platform(), "")
+
+	home := h.request(http.MethodGet, "/", nil, cookie).Body.String()
+	testutil.Contains(t, "home", home, ">Live site<", ">Preview<", ">Draft<", "Publish Draft to Preview",
+		"A newer version is waiting in Draft.", `href="/sites/staging/blog/promote"`)
+	testutil.NotContains(t, "home", home, ">staging<")
+
+	faCookie, _ := h.as(platform(), "fa")
+	home = h.request(http.MethodGet, "/", nil, faCookie).Body.String()
+	testutil.Contains(t, "Persian home", home, i18n.Persian.T(i18n.Publish, "طرح", "آزمایشی"),
+		">production<") // no Persian label: the name
+
+	page := h.request(http.MethodGet, "/sites/staging/blog", nil, cookie).Body.String()
+	testutil.Contains(t, "site page", page, "<title>blog · Preview", `<span dir="auto">Preview</span>`,
+		"Publish Draft to Preview", `href="/sites/production/blog"><span dir="auto">Live site</span>`)
+
+	page = h.request(http.MethodGet, "/sites/production/blog/promote", nil, cookie).Body.String()
+	testutil.Contains(t, "publish page", page, "The version that Preview shows now will be put on Live site.")
+
+	w := h.request(http.MethodPost, "/sites/staging/blog/deploy", form(csrf), cookie)
+	task := w.Header().Get("Location")
+	h.wait()
+
+	testutil.Contains(t, "task page", h.request(http.MethodGet, task, nil, faCookie).Body.String(),
+		i18n.Persian.T(i18n.TaskHeadingDeploy, siteBlog, "آزمایشی"))
+	testutil.Contains(t, "steps", h.events(task, faCookie).Body.String(),
+		i18n.Persian.T(i18n.Deploying, siteBlog, "آزمایشی"))
 }
 
 // Publish on a card or a site page leads to a page that says what changes

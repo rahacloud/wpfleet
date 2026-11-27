@@ -131,17 +131,17 @@ func newTab(l i18n.Lang, text string) string {
 func taskHeading(l i18n.Lang, t TaskView) string {
 	switch t.Action {
 	case ActionDeploy:
-		return l.T(i18n.TaskHeadingDeploy, t.Site, t.Env)
+		return l.T(i18n.TaskHeadingDeploy, t.Site, t.EnvLabel)
 	case ActionPromote:
-		return l.T(i18n.TaskHeadingPromote, t.Site, t.Env)
+		return l.T(i18n.TaskHeadingPromote, t.Site, t.EnvLabel)
 	case ActionBackup:
-		return l.T(i18n.TaskHeadingBackup, t.Site, t.Env)
+		return l.T(i18n.TaskHeadingBackup, t.Site, t.EnvLabel)
 	case ActionRestore:
-		return l.T(i18n.TaskHeadingRestore, t.Site, t.Env)
+		return l.T(i18n.TaskHeadingRestore, t.Site, t.EnvLabel)
 	case ActionLogin:
-		return l.T(i18n.TaskTitle, t.Action.Label(l), t.Site, t.Env)
+		return l.T(i18n.TaskTitle, t.Action.Label(l), t.Site, t.EnvLabel)
 	default:
-		return l.T(i18n.TaskTitle, t.Action.Label(l), t.Site, t.Env)
+		return l.T(i18n.TaskTitle, t.Action.Label(l), t.Site, t.EnvLabel)
 	}
 }
 

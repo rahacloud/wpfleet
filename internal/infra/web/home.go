@@ -25,7 +25,7 @@ func (s *Server) home(c *echo.Context) error {
 	sess := sessionOf(c)
 	title := s.lang(c).T(i18n.HomeTitle)
 
-	view, refused, err := s.homeView(c.Request().Context(), sess, strings.TrimSpace(c.QueryParam("q")))
+	view, refused, err := s.homeView(c.Request().Context(), sess, s.lang(c), strings.TrimSpace(c.QueryParam("q")))
 	if err != nil {
 		return err
 	}
@@ -37,9 +37,12 @@ func (s *Server) home(c *echo.Context) error {
 	return render(c, http.StatusOK, ui.HomePage(s.page(c, title), view))
 }
 
-// homeView builds the home page for the person in sess, searched by query.
-// refused says the fleet has sites but the person may see none of them.
-func (s *Server) homeView(ctx context.Context, sess session.Session, query string) (ui.HomeView, bool, error) {
+// homeView builds the home page for the person in sess, who reads l,
+// searched by query. refused says the fleet has sites but the person may
+// see none of them.
+func (s *Server) homeView(
+	ctx context.Context, sess session.Session, l i18n.Lang, query string,
+) (ui.HomeView, bool, error) {
 	view := ui.HomeView{Cards: nil, Total: 0, Query: query, CSRF: sess.CSRF, Support: s.support()}
 
 	envs, err := s.deps.Ops.Environments()
@@ -62,7 +65,7 @@ func (s *Server) homeView(ctx context.Context, sess session.Session, query strin
 	}
 
 	rows = slices.DeleteFunc(rows, func(r ops.SiteRow) bool { return !s.allows(sess, r.Env, r.Site, access.View) })
-	cards := siteCards(liveOrder(envs), rows, func(env, site string) ui.Perms { return s.perms(sess, env, site) })
+	cards := siteCards(liveOrder(envs), l, rows, func(env, site string) ui.Perms { return s.perms(sess, env, site) })
 
 	for i := range cards {
 		for j := range cards[i].Envs {
@@ -153,11 +156,13 @@ func liveOrder(envs []Environment) []orderedEnv {
 }
 
 // siteCards builds a card for each site in rows, which hold only the
-// environments the person may see: the environments in order, "Open admin"
-// where the person may log in, and "Publish" for the environment closest to
-// live whose promoteFrom runs another version, when the person may deploy
-// there and see the source.
-func siteCards(order []orderedEnv, rows []ops.SiteRow, perms func(env, site string) ui.Perms) []ui.SiteCard {
+// environments the person may see: the environments in order, named in l,
+// "Open admin" where the person may log in, and "Publish" for the
+// environment closest to live whose promoteFrom runs another version, when
+// the person may deploy there and see the source.
+func siteCards(
+	order []orderedEnv, l i18n.Lang, rows []ops.SiteRow, perms func(env, site string) ui.Perms,
+) []ui.SiteCard {
 	type key struct{ env, site string }
 
 	byKey := map[key]ops.SiteRow{}
@@ -187,13 +192,15 @@ func siteCards(order []orderedEnv, rows []ops.SiteRow, perms func(env, site stri
 
 			p := perms(e.Name, name)
 			card.Envs = append(card.Envs, ui.CardEnv{
-				Env: e.Name, Live: e.live, Health: health(r.Ready), Host: r.Host, URL: r.URL, CanLogin: p.Login,
-				AdminBlockedBy: "",
+				Env: e.Name, Label: e.In(l), Live: e.live, Health: health(r.Ready), Host: r.Host, URL: r.URL,
+				CanLogin: p.Login, AdminBlockedBy: "",
 			})
 
 			source, ok := byKey[key{e.PromoteFrom, name}]
 			if card.Publish == nil && p.Deploy && ok && imageTag(source.Image) != imageTag(r.Image) {
-				card.Publish = &ui.PublishOffer{From: e.PromoteFrom, To: e.Name}
+				card.Publish = &ui.PublishOffer{
+					From: e.PromoteFrom, To: e.Name, FromLabel: envIn(order, e.PromoteFrom, l), ToLabel: e.In(l),
+				}
 			}
 		}
 

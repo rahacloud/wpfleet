@@ -8,6 +8,7 @@ import (
 	"slices"
 
 	"github.com/rahacloud/wpfleet/internal/domain/fleet"
+	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 	"github.com/rahacloud/wpfleet/internal/ops"
 )
 
@@ -35,9 +36,12 @@ func (o FleetOps) Environments() ([]Environment, error) {
 		return nil, err
 	}
 
-	envs := make([]Environment, 0, len(f.Fleet.Environments))
-	for _, e := range f.Fleet.Environments {
-		envs = append(envs, Environment{Name: e.Name, PromoteFrom: e.PromoteFrom})
+	envs := make([]Environment, 0, len(f.Config.Environments))
+	for _, e := range f.Config.Environments {
+		envs = append(envs, Environment{
+			Name: e.Name, PromoteFrom: e.PromoteFrom,
+			Label: map[i18n.Lang]string{i18n.English: e.Label.EN, i18n.Persian: e.Label.FA},
+		})
 	}
 
 	return envs, nil

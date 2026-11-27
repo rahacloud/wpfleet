@@ -66,9 +66,9 @@ func PublishPage(p Page, v PublishView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var4 string
-				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(p.L.T(i18n.PublishConfirmIntro, v.From, v.Env))
+				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(p.L.T(i18n.PublishConfirmIntro, v.FromLabel, v.EnvLabel))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/publish.templ`, Line: 13, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/publish.templ`, Line: 13, Col: 65}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
@@ -84,9 +84,9 @@ func PublishPage(p Page, v PublishView) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var5 string
-					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(p.L.T(i18n.PublishConfirmLive, v.Env))
+					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(p.L.T(i18n.PublishConfirmLive, v.EnvLabel))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/publish.templ`, Line: 15, Col: 79}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/publish.templ`, Line: 15, Col: 84}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 					if templ_7745c5c3_Err != nil {
@@ -146,9 +146,9 @@ func PublishPage(p Page, v PublishView) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var9 string
-				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(p.L.T(i18n.NothingToPublish, v.Env, v.From))
+				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(p.L.T(i18n.NothingToPublish, v.EnvLabel, v.FromLabel))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/publish.templ`, Line: 22, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/publish.templ`, Line: 22, Col: 62}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/rahacloud/wpfleet/internal/infra/gitrepo"
 	"github.com/rahacloud/wpfleet/internal/infra/session"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui"
+	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 	"github.com/rahacloud/wpfleet/internal/ops"
 )
 
@@ -82,6 +83,19 @@ type Environment struct {
 	Name string
 	// PromoteFrom is the environment it publishes from; empty when none.
 	PromoteFrom string
+	// Label is how the UI names the environment to people, per language;
+	// a language without one shows Name.
+	Label map[i18n.Lang]string
+}
+
+// In names the environment to people who read l: its label in l, else its
+// name.
+func (e Environment) In(l i18n.Lang) string {
+	if label := e.Label[l]; label != "" {
+		return label
+	}
+
+	return e.Name
 }
 
 // Operations are the operations of internal/ops the server runs, on the

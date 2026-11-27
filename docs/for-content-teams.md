@@ -35,7 +35,7 @@ The first page, **Your sites**, has one card for each website. A card shows:
 - **Open admin** on each line where you may sign in to the dashboard;
 - when the last backup was made, for example "Backed up 3 hours ago", or "Could not check the backups right now" when the page could not check;
 - **Backups and more**, which opens the website's own page, where you back up and restore;
-- **Publish staging to production** (with your environments' names), when staging has a newer version than production and you are allowed to publish it.
+- **Publish staging to production** (with the names your team gave its copies, for example "Publish Preview to Live site"), when staging has a newer version than production and you are allowed to publish it.
 
 When you work on more than six websites, a search box at the top finds a website by part of its name or address as you type.
 

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/rahacloud/wpfleet/internal/infra/web"
+	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 	"github.com/rahacloud/wpfleet/internal/testutil"
 )
 
@@ -23,6 +24,7 @@ environments:
   - name: staging
     namespace: wp-staging
     promoteFrom: development
+    label: {en: Preview, fa: آزمایشی}
 `,
 		"environments/development/blog.yaml": "site: blog\nimage:\n  repository: r.example.com/blog\n  tag: v4\n",
 		"environments/development/shop.yaml": "site: shop\nimage:\n  repository: r.example.com/shop\n  tag: v1\n",
@@ -48,9 +50,14 @@ func TestFleetOpsReadsTheFleet(t *testing.T) {
 	envs, err := o.Environments()
 	testutil.NoError(t, err)
 	testutil.DeepEqual(t, "environments", envs, []web.Environment{
-		{Name: envDev, PromoteFrom: ""},
-		{Name: envStaging, PromoteFrom: envDev},
+		{Name: envDev, PromoteFrom: "", Label: map[i18n.Lang]string{i18n.English: "", i18n.Persian: ""}},
+		{
+			Name: envStaging, PromoteFrom: envDev,
+			Label: map[i18n.Lang]string{i18n.English: "Preview", i18n.Persian: "آزمایشی"},
+		},
 	})
+	testutil.Equal(t, "a label", envs[1].In(i18n.Persian), "آزمایشی")
+	testutil.Equal(t, "no label is the name", envs[0].In(i18n.Persian), envDev)
 
 	sites, err := o.Sites(envDev)
 	testutil.NoError(t, err)

@@ -11,7 +11,7 @@ wpfleet builds its configuration in this order, each layer over the one before:
 3. environment variables that start with `WPFLEET_`, with `__` between levels: `WPFLEET_REGISTRY` sets `registry`, and `WPFLEET_BACKUP__S3__BUCKET` sets `backup.s3.bucket`;
 4. command-line flags.
 
-A missing `wpfleet.yaml` is an error that names the directory, so a command run from the wrong place says so. After loading, wpfleet checks that every environment has a name and a namespace, that no name appears twice, and that every `promoteFrom` names another environment that exists.
+A missing `wpfleet.yaml` is an error that names the directory, so a command run from the wrong place says so. After loading, wpfleet checks that every environment has a name and a namespace and labels of at most 40 characters on one line, that no name appears twice, and that every `promoteFrom` names another environment that exists.
 
 A few `WPFLEET_` variables are never configuration keys, because they belong to a flag or hold a secret:
 
@@ -67,6 +67,7 @@ Each entry is one environment, usually `development`, `staging` and `production`
 | `context` | string | `""` | A context in that kubeconfig. Empty uses the current context. |
 | `values` | string | `environments/<name>` | The directory of the environment's values files, relative to the fleet directory. It holds `_shared.yaml` and one `<site>.yaml` per site; every `*.yaml` file other than `_shared.yaml` is a site, named by the file name, which must be a DNS label. |
 | `promoteFrom` | string | `""` | The environment that `wpfleet promote --to <name>` copies images from. Empty means nothing promotes into this environment. It must name another environment. |
+| `label.en`, `label.fa` | string | `""` | How the web UI names the environment to people in English and in Persian, for example `Live site` and `سایت اصلی` for `production`. At most 40 characters, on one line. A language without a label shows the name. Paths, the audit log and the CLI always use the name. |
 
 ## backup
 

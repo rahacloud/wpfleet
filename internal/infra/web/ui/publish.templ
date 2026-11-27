@@ -10,16 +10,16 @@ templ PublishPage(p Page, v PublishView) {
 		<h1>{ p.L.T(i18n.PublishConfirmTitle, v.Site) }</h1>
 		<section class="wf-card wf-stack wf-page-publish-confirm">
 			if v.Changed {
-				<p>{ p.L.T(i18n.PublishConfirmIntro, v.From, v.Env) }</p>
+				<p>{ p.L.T(i18n.PublishConfirmIntro, v.FromLabel, v.EnvLabel) }</p>
 				if v.Live {
-					<p class="wf-page-restore-warning">{ p.L.T(i18n.PublishConfirmLive, v.Env) }</p>
+					<p class="wf-page-restore-warning">{ p.L.T(i18n.PublishConfirmLive, v.EnvLabel) }</p>
 				}
 				<form method="post" action={ templ.SafeURL(ActionPath(v.Env, v.Site, "promote")) }>
 					<input type="hidden" name="csrf" value={ v.CSRF }/>
 					<button type="submit" class="wf-btn wf-btn-primary" data-action="promote">{ p.L.T(i18n.PublishNow) }</button>
 				</form>
 			} else {
-				<p>{ p.L.T(i18n.NothingToPublish, v.Env, v.From) }</p>
+				<p>{ p.L.T(i18n.NothingToPublish, v.EnvLabel, v.FromLabel) }</p>
 			}
 		</section>
 		<p><a href={ templ.SafeURL(SitePath(v.Env, v.Site)) }>{ p.L.T(i18n.Cancel) }</a></p>

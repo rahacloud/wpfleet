@@ -73,14 +73,14 @@ func SitePage(p Page, s SiteView) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, " <span class=\"wf-muted wf-page-env-title\"><span dir=\"ltr\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, " <span class=\"wf-muted wf-page-env-title\"><span dir=\"auto\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var5 string
-			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(s.Env)
+			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(s.EnvLabel)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/site.templ`, Line: 18, Col: 27}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/site.templ`, Line: 18, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -373,14 +373,14 @@ func SitePage(p Page, s SiteView) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "\"><span dir=\"ltr\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "\"><span dir=\"auto\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var22 string
-					templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(o.Env)
+					templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(o.Label)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/site.templ`, Line: 58, Col: 30}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/site.templ`, Line: 58, Col: 33}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 					if templ_7745c5c3_Err != nil {
@@ -709,9 +709,9 @@ func siteActions(l i18n.Lang, s SiteView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var40 string
-			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(l.T(i18n.Publish, s.PromoteFrom, s.Env))
+			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(l.T(i18n.Publish, s.PromoteFromLabel, s.EnvLabel))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/site.templ`, Line: 113, Col: 195}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/site.templ`, Line: 113, Col: 205}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {
@@ -722,9 +722,9 @@ func siteActions(l i18n.Lang, s SiteView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var41 string
-			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(l.T(i18n.PublishHelp, s.PromoteFrom, s.Env))
+			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(l.T(i18n.PublishHelp, s.PromoteFromLabel, s.EnvLabel))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/site.templ`, Line: 114, Col: 86}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/site.templ`, Line: 114, Col: 96}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 			if templ_7745c5c3_Err != nil {
@@ -916,9 +916,9 @@ func technical(l i18n.Lang, s SiteView) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var53 string
-			templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(l.T(i18n.NewerIn, s.PromoteFrom))
+			templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(l.T(i18n.NewerIn, s.PromoteFromLabel))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/site.templ`, Line: 147, Col: 43}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/site.templ`, Line: 147, Col: 48}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
 			if templ_7745c5c3_Err != nil {

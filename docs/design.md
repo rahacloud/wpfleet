@@ -46,6 +46,9 @@ environments:
   - name: production
     namespace: wp-production
     promoteFrom: staging
+    label:                                 # how the web UI names it; optional, the name otherwise
+      en: Live site
+      fa: سایت اصلی
 backup:
   s3:
     endpoint: https://s3.example.com
@@ -198,7 +201,7 @@ Every action, allowed or refused, writes one JSON line to stdout with `"audit": 
 
 ### The UI
 
-The UI is for people who run a site's content, not its infrastructure: an editor or a marketing team signs in with the company account, sees only their sites, and opens each one's admin with one click, without a WordPress password. So each page leads with the action and says it in their words: "Open admin", "Publish staging to live" (promote and deploy), "Back up now", "Restore yesterday's backup"; the engineering terms (release, revision, commit, drift, diff) stay on the detail pages of people with `deploy`. A button that a person's permissions do not allow is not shown at all. Every text goes through a message catalogue, with English and Persian (right to left) in the first version, chosen from the browser's language and changeable per person.
+The UI is for people who run a site's content, not its infrastructure: an editor or a marketing team signs in with the company account, sees only their sites, and opens each one's admin with one click, without a WordPress password. So each page leads with the action and says it in their words: "Open admin", "Publish staging to live" (promote and deploy), "Back up now", "Restore yesterday's backup"; the engineering terms (release, revision, commit, drift, diff) stay on the detail pages of people with `deploy`. A button that a person's permissions do not allow is not shown at all. Every text goes through a message catalogue, with English and Persian (right to left) in the first version, chosen from the browser's language and changeable per person. Environments are named to people by their optional `label` in wpfleet.yaml, per language (`environments[].label.en` and `.fa`, at most 40 characters on one line), so a page says "Publish Preview to Live site" or "انتشار پیش‌نمایش در سایت اصلی" rather than mixing Latin config keys into a Persian sentence; a language without a label shows the name, and paths, the audit and the CLI always use the name. The labels are read from the fleet in the clone like the rest of it (`web.Environment.Label`, `Environment.In(lang)`), so a push changes them, and an action's steps name the environment in each viewer's language.
 
 Server-rendered HTML from [templ](https://templ.guide) components, with [htmx](https://htmx.org) for partial updates; both are compiled into the binary and nothing loads from a CDN. Pages:
 

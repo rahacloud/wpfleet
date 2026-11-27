@@ -119,7 +119,7 @@ func (s *Server) lock(c *echo.Context, t target) (func(), bool, error) {
 	s.auditTarget(c.Request().Context(), t, audit.ResultBusy, busy.Error())
 
 	l := s.lang(c)
-	text := l.T(i18n.Busy, ui.Action(busy.Action).Label(l), t.site, t.env)
+	text := l.T(i18n.Busy, ui.Action(busy.Action).Label(l), t.site, s.envLabels(l).of(t.env))
 
 	return nil, false, s.refuse(c, http.StatusConflict, text, ui.SitePath(t.env, t.site))
 }

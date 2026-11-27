@@ -337,9 +337,9 @@ func newFakeOps() *fakeOps {
 			},
 		},
 		envs: []web.Environment{
-			{Name: envDev, PromoteFrom: ""},
-			{Name: envStaging, PromoteFrom: envDev},
-			{Name: envProd, PromoteFrom: envStaging},
+			{Name: envDev, PromoteFrom: "", Label: nil},
+			{Name: envStaging, PromoteFrom: envDev, Label: nil},
+			{Name: envProd, PromoteFrom: envStaging, Label: nil},
 		},
 		sites: map[string][]string{
 			envDev:     {siteBlog, siteShop},

@@ -48,7 +48,7 @@ func (s *Server) environment(name string) (Environment, bool, error) {
 
 	i := slices.IndexFunc(envs, func(e Environment) bool { return e.Name == name })
 	if i < 0 {
-		return Environment{Name: "", PromoteFrom: ""}, false, nil
+		return Environment{Name: "", PromoteFrom: "", Label: nil}, false, nil
 	}
 
 	return envs[i], true, nil
@@ -97,18 +97,20 @@ func (s *Server) sitePage(c *echo.Context) error {
 		return err
 	}
 
-	view, err := s.siteView(c.Request().Context(), sessionOf(c), env, site)
+	view, err := s.siteView(c.Request().Context(), sessionOf(c), s.lang(c), env, site)
 	if err != nil {
 		return err
 	}
 
-	return render(c, http.StatusOK, ui.SitePage(s.page(c, site+" · "+env), view))
+	return render(c, http.StatusOK, ui.SitePage(s.page(c, site+" · "+view.EnvLabel), view))
 }
 
-// siteView builds the page of site in env for the person in sess. Only the
-// fleet failing to load is an error; a cluster that cannot be read marks
-// the view Unavailable and the rest still shows.
-func (s *Server) siteView(ctx context.Context, sess session.Session, env, site string) (ui.SiteView, error) {
+// siteView builds the page of site in env for the person in sess, who reads
+// l. Only the fleet failing to load is an error; a cluster that cannot be
+// read marks the view Unavailable and the rest still shows.
+func (s *Server) siteView(
+	ctx context.Context, sess session.Session, l i18n.Lang, env, site string,
+) (ui.SiteView, error) {
 	envs, err := s.deps.Ops.Environments()
 	if err != nil {
 		return ui.SiteView{}, err
@@ -125,8 +127,9 @@ func (s *Server) siteView(ctx context.Context, sess session.Session, env, site s
 
 	perms := s.perms(sess, env, site)
 	view := ui.SiteView{
-		Env: env, Site: site, Live: environment.live, Host: "", URL: "", Health: ui.HealthUnknown, Image: "", Tag: "",
-		PromoteFrom: "", FromTag: "", CanPublish: false,
+		Env: env, Site: site, EnvLabel: environment.In(l), Live: environment.live,
+		Host: "", URL: "", Health: ui.HealthUnknown, Image: "", Tag: "",
+		PromoteFrom: "", PromoteFromLabel: "", FromTag: "", CanPublish: false,
 		Perms: perms, Engineering: perms.Deploy, Running: "", AdminBlockedBy: s.adminBlockedBy(env, site),
 		Unavailable: false, Ready: "", Pods: nil, Release: nil, Releases: nil,
 		Volume: ui.Volume{Claim: "", Found: false, Phase: "", Capacity: "", StorageClass: ""},
@@ -137,7 +140,7 @@ func (s *Server) siteView(ctx context.Context, sess session.Session, env, site s
 		view.Running = ui.Action(running)
 	}
 
-	view.Others, err = s.otherEnvironments(sess, order, env, site)
+	view.Others, err = s.otherEnvironments(sess, order, l, env, site)
 	if err != nil {
 		return ui.SiteView{}, err
 	}
@@ -159,7 +162,7 @@ func (s *Server) siteView(ctx context.Context, sess session.Session, env, site s
 		}
 	}
 
-	s.fillPublish(&view, sess, environment.PromoteFrom)
+	s.fillPublish(&view, sess, environment.PromoteFrom, envIn(order, environment.PromoteFrom, l))
 
 	return view, nil
 }
@@ -167,7 +170,7 @@ func (s *Server) siteView(ctx context.Context, sess session.Session, env, site s
 // fillPublish adds what "Publish <from> to <env>" needs to the site page,
 // when the environment publishes from one the person may see. A plan that
 // cannot be made leaves the button out.
-func (s *Server) fillPublish(view *ui.SiteView, sess session.Session, from string) {
+func (s *Server) fillPublish(view *ui.SiteView, sess session.Session, from, fromLabel string) {
 	if from == "" || !s.allows(sess, from, view.Site, access.View) {
 		return
 	}
@@ -177,9 +180,49 @@ func (s *Server) fillPublish(view *ui.SiteView, sess session.Session, from strin
 		return
 	}
 
-	view.PromoteFrom = from
+	view.PromoteFrom, view.PromoteFromLabel = from, fromLabel
 	view.FromTag = plan.Target.Tag
 	view.CanPublish = view.Perms.Deploy && plan.Changed()
+}
+
+// envIn names the environment called name in l, or gives the name back
+// when the fleet has none by it.
+func envIn(order []orderedEnv, name string, l i18n.Lang) string {
+	i := slices.IndexFunc(order, func(e orderedEnv) bool { return e.Name == name })
+	if i < 0 {
+		return name
+	}
+
+	return order[i].In(l)
+}
+
+// envLabels names the fleet's environments in l, from the fleet as it is
+// now; empty when the fleet cannot be read.
+func (s *Server) envLabels(l i18n.Lang) envNames {
+	envs, err := s.deps.Ops.Environments()
+	if err != nil {
+		return nil
+	}
+
+	names := make(envNames, len(envs))
+	for _, e := range envs {
+		names[e.Name] = e.In(l)
+	}
+
+	return names
+}
+
+// envNames are the environments' labels in one language, by name.
+type envNames map[string]string
+
+// of is the label of the environment called name, or the name itself when
+// it has none.
+func (n envNames) of(name string) string {
+	if label, ok := n[name]; ok {
+		return label
+	}
+
+	return name
 }
 
 // adminBlockedBy is the action that would make "Open admin" on site in env
@@ -215,8 +258,10 @@ func (s *Server) releaseHistory(ctx context.Context, env, site string) []ui.Rele
 }
 
 // otherEnvironments are the environments other than env that have the site
-// and that the person may see, in the order of the home page.
-func (s *Server) otherEnvironments(sess session.Session, order []orderedEnv, env, site string) ([]ui.EnvLink, error) {
+// and that the person may see, in the order of the home page, named in l.
+func (s *Server) otherEnvironments(
+	sess session.Session, order []orderedEnv, l i18n.Lang, env, site string,
+) ([]ui.EnvLink, error) {
 	var others []ui.EnvLink
 
 	for _, e := range order {
@@ -230,7 +275,7 @@ func (s *Server) otherEnvironments(sess session.Session, order []orderedEnv, env
 		}
 
 		if slices.Contains(sites, site) {
-			others = append(others, ui.EnvLink{Env: e.Name, Live: e.live})
+			others = append(others, ui.EnvLink{Env: e.Name, Label: e.In(l), Live: e.live})
 		}
 	}
 
@@ -423,7 +468,8 @@ func (s *Server) publishPage(c *echo.Context) error {
 
 	l := s.lang(c)
 	view := ui.PublishView{
-		Env: env, Site: site, From: from, Live: order[i].live, Changed: plan.Changed(), CSRF: sess.CSRF,
+		Env: env, Site: site, From: from, EnvLabel: order[i].In(l), FromLabel: envIn(order, from, l),
+		Live: order[i].live, Changed: plan.Changed(), CSRF: sess.CSRF,
 	}
 
 	return render(c, http.StatusOK, ui.PublishPage(s.page(c, l.T(i18n.PublishConfirmTitle, site)), view))
