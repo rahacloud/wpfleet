@@ -29,11 +29,20 @@ const EnvPrefix = "WPFLEET_"
 // WPFLEET_BACKUP__S3__BUCKET sets backup.s3.bucket.
 const envLevel = "__"
 
-// reservedEnv reports whether a WPFLEET_ variable, prefix removed, belongs to
-// a flag or holds a secret, and so is never a configuration key.
+// ReservedEnv reports whether an environment variable belongs to a flag
+// (WPFLEET_FLEET, WPFLEET_ENV, WPFLEET_OUTPUT, WPFLEET_VERBOSE, and serve's
+// WPFLEET_CONFIG and WPFLEET_DATA) or holds a secret, and so is never read as
+// a configuration key.
+func ReservedEnv(variable string) bool {
+	name, ok := strings.CutPrefix(variable, EnvPrefix)
+
+	return ok && reservedEnv(name)
+}
+
+// reservedEnv is ReservedEnv for a name with the prefix removed.
 func reservedEnv(name string) bool {
 	switch name {
-	case "FLEET", "ENV", "OUTPUT", "VERBOSE", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY",
+	case "FLEET", "ENV", "OUTPUT", "VERBOSE", "CONFIG", "DATA", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY",
 		"OIDC_CLIENT_SECRET", "SESSION_KEY", "GIT_SSH_KEY", "GIT_TOKEN", "GIT_WEBHOOK_SECRET":
 		return true
 	default:

@@ -20,11 +20,14 @@ lint:
     helm lint charts/wordpress -f charts/wordpress/ci/test-values.yaml
     helm lint deployments/helm/wpfleet -f deployments/helm/wpfleet/ci/test-values.yaml
 
-# Build the server image (proxy variables reach go mod download, not the image)
+# Build the server image (proxy variables reach go mod download, not the image);
+# the version and commit come from Git, since the build context has no .git
 image tag="wpfleet:dev":
     docker build -f build/package/Dockerfile \
         --build-arg HTTP_PROXY --build-arg HTTPS_PROXY --build-arg NO_PROXY \
         --build-arg http_proxy --build-arg https_proxy --build-arg no_proxy \
+        --build-arg VERSION="$(git describe --tags --always --dirty)" \
+        --build-arg COMMIT="$(git rev-parse --short HEAD)" \
         -t {{tag}} .
 
 tidy:

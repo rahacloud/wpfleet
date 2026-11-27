@@ -11,11 +11,16 @@ COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod go mod download
 COPY . .
 # The context has no .git (a worktree's .git is a file pointing outside it),
-# so the binary carries no VCS stamp and --version says devel; versioninfo
-# overwrites a -X Version from the build info, so an argument cannot fix it.
+# so Go records no commit; the version and the commit come in as build
+# arguments instead (just image passes them) and are stamped into wpfleet's
+# version package, which prefers them. Without them --version says devel.
+ARG VERSION=""
+ARG COMMIT=""
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    go build -trimpath -buildvcs=false -ldflags "-s -w" -o /out/wpfleet ./cmd/wpfleet
+    go build -trimpath -buildvcs=false \
+      -ldflags "-s -w -X github.com/rahacloud/wpfleet/internal/infra/version.version=${VERSION} -X github.com/rahacloud/wpfleet/internal/infra/version.commit=${COMMIT}" \
+      -o /out/wpfleet ./cmd/wpfleet
 
 # Static, with CA certificates and time zones, no shell; the nonroot user is
 # 65532, which the chart's securityContext names.

@@ -12,7 +12,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/carlmjohnson/versioninfo"
 	"github.com/urfave/cli/v3"
 
 	"github.com/rahacloud/wpfleet/internal/cmd/admin"
@@ -24,16 +23,17 @@ import (
 	"github.com/rahacloud/wpfleet/internal/cmd/promote"
 	"github.com/rahacloud/wpfleet/internal/cmd/serve"
 	"github.com/rahacloud/wpfleet/internal/cmd/sites"
+	"github.com/rahacloud/wpfleet/internal/infra/version"
 )
 
 // New builds the root command. Output goes to stdout and errors to stderr;
 // tests replace the command's Writer and ErrWriter.
 func New() *cli.Command {
 	//nolint:exhaustruct_v5 // urfave/cli commands are configured by their set fields
-	return &cli.Command{
+	root := &cli.Command{
 		Name:                  "wpfleet",
 		Usage:                 "manage a fleet of WordPress sites on Kubernetes",
-		Version:               versioninfo.Short(),
+		Version:               version.Short(),
 		EnableShellCompletion: true,
 		Suggest:               true,
 		Flags:                 cmdutil.GlobalFlags(),
@@ -53,6 +53,10 @@ func New() *cli.Command {
 			serve.Command(),
 		},
 	}
+
+	fixHelp(root)
+
+	return root
 }
 
 // setupLogging sends debug logs to stderr with --verbose; without it only

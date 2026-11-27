@@ -16,8 +16,12 @@ builds:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]
     goarch: [amd64, arm64]
+    # Stamped the way the image is, so a release and its image print the
+    # same --version; the version package prefers these over the build info.
     ldflags:
       - -s -w
+      - -X github.com/rahacloud/wpfleet/internal/infra/version.version=v{{ .Version }}
+      - -X github.com/rahacloud/wpfleet/internal/infra/version.commit={{ .ShortCommit }}
 
 archives:
   - id: default
