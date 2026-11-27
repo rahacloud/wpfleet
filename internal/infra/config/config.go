@@ -33,7 +33,8 @@ const envLevel = "__"
 // a flag or holds a secret, and so is never a configuration key.
 func reservedEnv(name string) bool {
 	switch name {
-	case "FLEET", "ENV", "OUTPUT", "VERBOSE", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY":
+	case "FLEET", "ENV", "OUTPUT", "VERBOSE", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY",
+		"OIDC_CLIENT_SECRET", "SESSION_KEY", "GIT_SSH_KEY", "GIT_TOKEN", "GIT_WEBHOOK_SECRET":
 		return true
 	default:
 		return false
@@ -57,6 +58,8 @@ type Config struct {
 	Environments []Environment `json:"environments" koanf:"environments"`
 	// Backup configures where the backups are.
 	Backup Backup `json:"backup" koanf:"backup"`
+	// Server configures wpfleet serve; the CLI ignores it.
+	Server Server `json:"server" koanf:"server"`
 }
 
 // Build configures image builds.
@@ -127,6 +130,7 @@ func Default() Config {
 		WPCLI:        WPCLI{URL: DefaultWPCLIURL, SHA512: DefaultWPCLISHA512, AllowUnverified: false},
 		Environments: nil,
 		Backup:       Backup{S3: S3{Endpoint: "", Bucket: "", Region: ""}},
+		Server:       DefaultServer(),
 	}
 }
 
@@ -134,6 +138,19 @@ func Default() Config {
 // environment variables from environ (os.Environ when nil), and validates the
 // result.
 func Load(dir string, environ func() []string) (Config, error) {
+	path := filepath.Join(dir, FileName)
+
+	cfg, err := LoadFile(path, environ)
+	if errors.Is(err, os.ErrNotExist) {
+		return Config{}, fmt.Errorf("%s not found: is %s a fleet directory? (--fleet): %w", path, dir, err)
+	}
+
+	return cfg, err
+}
+
+// LoadFile is Load for a configuration file anywhere, such as the one a
+// ConfigMap mounts for wpfleet serve.
+func LoadFile(path string, environ func() []string) (Config, error) {
 	k := koanf.New(".")
 
 	err := k.Load(structs.Provider(Default(), "koanf"), nil)
@@ -141,13 +158,8 @@ func Load(dir string, environ func() []string) (Config, error) {
 		return Config{}, fmt.Errorf("loading defaults: %w", err)
 	}
 
-	path := filepath.Join(dir, FileName)
 	err = k.Load(file.Provider(path), yaml.Parser())
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return Config{}, fmt.Errorf("%s not found: is %s a fleet directory? (--fleet): %w", path, dir, err)
-		}
-
 		return Config{}, fmt.Errorf("loading %s: %w", path, err)
 	}
 
@@ -157,7 +169,7 @@ func Load(dir string, environ func() []string) (Config, error) {
 
 	err = k.Load(env.Provider(".", env.Opt{
 		Prefix:        EnvPrefix,
-		TransformFunc: transformEnv,
+		TransformFunc: transformEnv(canonicalKeys(k)),
 		EnvironFunc:   environ,
 	}), nil)
 	if err != nil {
@@ -178,20 +190,44 @@ func Load(dir string, environ func() []string) (Config, error) {
 	return cfg, nil
 }
 
-// transformEnv maps WPFLEET_BACKUP__S3__BUCKET to backup.s3.bucket and drops
-// the variables that are not configuration. The any is koanf's signature.
-func transformEnv(key, value string) (string, any) {
-	name := strings.TrimPrefix(key, EnvPrefix)
-	if reservedEnv(name) {
-		return "", nil
+// canonicalKeys maps every key k holds, in lower case, to its spelling in
+// the file and the defaults, so WPFLEET_SERVER__PUBLICURL can set
+// server.publicURL: an environment variable has no case to keep.
+func canonicalKeys(k *koanf.Koanf) map[string]string {
+	keys := k.Keys()
+	canon := make(map[string]string, len(keys))
+
+	for _, key := range keys {
+		canon[strings.ToLower(key)] = key
 	}
 
-	return strings.ToLower(strings.ReplaceAll(name, envLevel, ".")), value
+	return canon
+}
+
+// transformEnv maps WPFLEET_BACKUP__S3__BUCKET to backup.s3.bucket, spelled
+// as canon has it, and drops the variables that are not configuration. The
+// any is koanf's signature.
+func transformEnv(canon map[string]string) func(key, value string) (string, any) {
+	return func(key, value string) (string, any) {
+		name := strings.TrimPrefix(key, EnvPrefix)
+		if reservedEnv(name) {
+			return "", nil
+		}
+
+		path := strings.ToLower(strings.ReplaceAll(name, envLevel, "."))
+		if known, ok := canon[path]; ok {
+			path = known
+		}
+
+		return path, value
+	}
 }
 
 // Validate checks that environment names are unique and non-empty, every
-// environment has a namespace, and every promoteFrom names another existing
-// environment.
+// environment has a namespace, every promoteFrom names another existing
+// environment, and the server section has no negative duration and no
+// access rule that cannot match. ValidateServer checks the rest of the
+// server section.
 func (c Config) Validate() error {
 	var errs []error
 
@@ -221,6 +257,8 @@ func (c Config) Validate() error {
 			errs = append(errs, fmt.Errorf("%w: environment %q promotes from unknown %q", ErrInvalid, e.Name, e.PromoteFrom))
 		}
 	}
+
+	errs = append(errs, c.Server.validate(seen)...)
 
 	return errors.Join(errs...)
 }

@@ -1,0 +1,24 @@
+existingSecret: wpfleet-secrets
+siteNamespaces: [wp-staging, wp-production]
+git:
+  sshKey:
+    enabled: true
+ingress:
+  enabled: true
+  className: nginx
+  tls:
+    secretName: wpfleet-tls
+config:
+  environments:
+    - name: staging
+      namespace: wp-staging
+    - name: production
+      namespace: wp-production
+      promoteFrom: staging
+  server:
+    publicURL: https://wpfleet.example.com
+    access:
+      - group: platform
+        environments: ["*"]
+        sites: ["*"]
+        allow: [view, deploy, login, backup, restore]

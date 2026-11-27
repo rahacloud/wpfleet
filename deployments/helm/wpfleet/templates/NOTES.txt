@@ -1,0 +1,10 @@
+wpfleet serve is installed as {{ include "wpfleet.fullname" . }} in {{ .Release.Namespace }}.
+
+{{- if .Values.ingress.enabled }}
+Open {{ dig "server" "publicURL" "" .Values.config }} and sign in.
+{{- else }}
+No Ingress: kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "wpfleet.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}
+
+It manages these namespaces: {{ .Values.siteNamespaces | join ", " | default "none (set siteNamespaces)" }}.
+Its secrets come from the Secret {{ .Values.existingSecret }}, which this chart does not make.

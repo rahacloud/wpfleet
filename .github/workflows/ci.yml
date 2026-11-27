@@ -35,6 +35,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: azure/setup-helm@v5
       - run: helm lint charts/wordpress -f charts/wordpress/ci/test-values.yaml
+      - run: helm lint deployments/helm/wpfleet -f deployments/helm/wpfleet/ci/test-values.yaml
 
   test:
     name: build & test
@@ -50,3 +51,14 @@ jobs:
       - run: go build ./...
       - run: go test -race ./... -covermode=atomic -coverprofile=coverage.out
       - run: go mod tidy && git diff --exit-code go.mod go.sum
+
+  image:
+    name: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      # Builds the server image to keep the Dockerfile working; nothing is
+      # pushed until there is a release to push.
+      - run: docker build -f build/package/Dockerfile -t wpfleet:ci .
+      - run: docker run --rm wpfleet:ci --version
