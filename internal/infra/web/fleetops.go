@@ -120,6 +120,16 @@ func (o FleetOps) ListBackups(ctx context.Context, env, site string) ([]ops.Back
 	return ops.ListBackups(ctx, e, s, o.backupOptions())
 }
 
+// BackupsEnabled says whether the site's values turn its backups on.
+func (o FleetOps) BackupsEnabled(env, site string) (bool, error) {
+	e, s, err := o.site(env, site)
+	if err != nil {
+		return false, err
+	}
+
+	return ops.BackupEnabled(e, s)
+}
+
 // SiteFile is the site's own values file, relative to the fleet directory.
 func (o FleetOps) SiteFile(env, site string) (string, error) {
 	f, err := o.load()

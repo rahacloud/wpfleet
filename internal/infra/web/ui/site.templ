@@ -215,7 +215,9 @@ templ HistoryFragment(l i18n.Lang, entries []HistoryEntry, failed bool) {
 // people with restore.
 templ BackupsFragment(l i18n.Lang, b BackupsView) {
 	<div>
-		if b.Failed {
+		if b.Off && len(b.Rows) == 0 {
+			<p class="muted">{ l.T(i18n.BackupsOff) }</p>
+		} else if b.Failed {
 			<p class="bad">{ l.T(i18n.BackupsUnavailable) }</p>
 		} else if len(b.Rows) == 0 {
 			<p class="muted">{ l.T(i18n.NoBackups) }</p>

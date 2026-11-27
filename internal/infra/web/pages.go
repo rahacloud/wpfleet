@@ -443,11 +443,21 @@ func (s *Server) backupsFragment(c *echo.Context) error {
 	ctx := c.Request().Context()
 	view := ui.BackupsView{
 		Env: env, Site: site, CSRF: sess.CSRF, CanRestore: s.allows(sess, env, site, access.Restore),
-		Failed: false, Rows: nil,
+		Off: false, Failed: false, Rows: nil,
 	}
 
+	enabled, err := s.deps.Ops.BackupsEnabled(env, site)
+	view.Off = err == nil && !enabled
+
 	rows, err := s.deps.Ops.ListBackups(ctx, env, site)
-	if err != nil {
+
+	switch {
+	case err != nil && view.Off:
+		// Nothing is backed up, so a bucket the server cannot read hides
+		// only backups from before they were turned off.
+		s.log.DebugContext(ctx, "listing the backups of a site whose backups are off",
+			"env", env, "site", site, "error", err)
+	case err != nil:
 		s.log.WarnContext(ctx, "listing backups", "env", env, "site", site, "error", err)
 
 		view.Failed = true

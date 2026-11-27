@@ -258,6 +258,9 @@ type BackupsView struct {
 	CSRF string
 	// CanRestore shows the restore forms.
 	CanRestore bool
+	// Off says the site's backups are turned off; backups taken before
+	// still show.
+	Off bool
 	// Failed says the backups could not be listed.
 	Failed bool
 	// Rows are the backups, newest first.

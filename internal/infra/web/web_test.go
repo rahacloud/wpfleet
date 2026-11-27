@@ -321,6 +321,39 @@ func TestRestoreFormNeedsRestore(t *testing.T) {
 		`data-action="restore"`, `name="stamp" value="20261126T020000Z"`, `pattern="blog"`)
 }
 
+// A site whose backups are off has nothing to list, and a bucket the server
+// cannot read is then no failure to show in red to an editor; backups taken
+// before they were turned off still show.
+func TestBackupsOff(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.ops.backupsOff = true
+	h.ops.listErr = errFake
+
+	cookie, _ := h.as(editor(), "")
+	fragment := h.request(http.MethodGet, "/sites/staging/blog/backups", nil, cookie).Body.String()
+	testutil.Contains(t, "backups off", fragment, "Backups are off")
+	testutil.NotContains(t, "backups off", fragment, "could not be listed")
+
+	h.ops.listErr = nil
+	fragment = h.request(http.MethodGet, "/sites/staging/blog/backups", nil, cookie).Body.String()
+	testutil.Contains(t, "backups off, none left", fragment, "Backups are off")
+
+	stamp, err := backup.ParseStamp("20261126T020000Z")
+	testutil.NoError(t, err)
+
+	h.ops.backups = []ops.BackupRow{{Stamp: stamp, DumpSize: 2048, HasDump: true, ChangedFiles: 0, Expires: time.Time{}}}
+	fragment = h.request(http.MethodGet, "/sites/staging/blog/backups", nil, cookie).Body.String()
+	testutil.Contains(t, "backups taken before", fragment, "2026-11-26 02:00 UTC")
+
+	// With backups on, a bucket that cannot be read is a failure.
+	h.ops.backupsOff = false
+	h.ops.listErr = errFake
+	fragment = h.request(http.MethodGet, "/sites/staging/blog/backups", nil, cookie).Body.String()
+	testutil.Contains(t, "backups on, bucket unreadable", fragment, "could not be listed")
+}
+
 func TestRefusalIsAudited(t *testing.T) {
 	t.Parallel()
 

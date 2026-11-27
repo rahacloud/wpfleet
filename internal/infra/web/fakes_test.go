@@ -269,24 +269,26 @@ type call struct {
 // fakeOps is a fleet of development, staging and production with blog and
 // shop, answering every operation from its fields.
 type fakeOps struct {
-	mu        sync.Mutex
-	calls     []call
-	envs      []web.Environment
-	sites     map[string][]string
-	tags      map[string]string
-	ready     string
-	release   *fakeRelease
-	diff      ops.SiteDiff
-	backups   []ops.BackupRow
-	login     ops.Login
-	loginErr  error
-	deployErr string
-	backupLog string
-	envErr    error
-	backupErr error
-	block     bool
-	plan      fleet.PromotionPlan
-	applied   *fleet.PromotionPlan
+	mu         sync.Mutex
+	calls      []call
+	envs       []web.Environment
+	sites      map[string][]string
+	tags       map[string]string
+	ready      string
+	release    *fakeRelease
+	diff       ops.SiteDiff
+	backups    []ops.BackupRow
+	backupsOff bool
+	listErr    error
+	login      ops.Login
+	loginErr   error
+	deployErr  string
+	backupLog  string
+	envErr     error
+	backupErr  error
+	block      bool
+	plan       fleet.PromotionPlan
+	applied    *fleet.PromotionPlan
 }
 
 // fakeRelease is the release ShowSite reports.
@@ -296,16 +298,18 @@ type fakeRelease struct {
 
 func newFakeOps() *fakeOps {
 	return &fakeOps{
-		mu:        sync.Mutex{},
-		calls:     nil,
-		backups:   nil,
-		loginErr:  nil,
-		deployErr: "",
-		backupLog: "dumping <database>\n",
-		envErr:    nil,
-		backupErr: nil,
-		block:     false,
-		applied:   nil,
+		mu:         sync.Mutex{},
+		calls:      nil,
+		backups:    nil,
+		backupsOff: false,
+		listErr:    nil,
+		loginErr:   nil,
+		deployErr:  "",
+		backupLog:  "dumping <database>\n",
+		envErr:     nil,
+		backupErr:  nil,
+		block:      false,
+		applied:    nil,
 		envs: []web.Environment{
 			{Name: envDev, PromoteFrom: ""},
 			{Name: envStaging, PromoteFrom: envDev},
@@ -387,7 +391,15 @@ func (o *fakeOps) Diff(_ context.Context, env, site string) (ops.SiteDiff, error
 func (o *fakeOps) ListBackups(_ context.Context, env, site string) ([]ops.BackupRow, error) {
 	o.record("ListBackups", env, site)
 
+	if o.listErr != nil {
+		return nil, o.listErr
+	}
+
 	return o.backups, nil
+}
+
+func (o *fakeOps) BackupsEnabled(_, _ string) (bool, error) {
+	return !o.backupsOff, nil
 }
 
 func (o *fakeOps) SiteFile(env, site string) (string, error) {

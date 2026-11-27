@@ -248,3 +248,14 @@ func siteBackup(ctx context.Context, cluster Cluster, namespace, cronJob string,
 
 	return out, nil
 }
+
+// BackupEnabled says whether the site's values over the chart's defaults
+// turn its backup CronJob on.
+func BackupEnabled(env *Env, site fleet.Site) (bool, error) {
+	v, err := env.ChartValues(site)
+	if err != nil {
+		return false, err
+	}
+
+	return v.Bool(valueBackupEnabled), nil
+}

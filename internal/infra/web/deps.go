@@ -102,6 +102,8 @@ type FleetReader interface {
 	Diff(ctx context.Context, env, site string) (ops.SiteDiff, error)
 	// ListBackups lists a site's backups.
 	ListBackups(ctx context.Context, env, site string) ([]ops.BackupRow, error)
+	// BackupsEnabled says whether the site's values turn its backups on.
+	BackupsEnabled(env, site string) (bool, error)
 	// SiteFile is the site's values file, relative to the clone.
 	SiteFile(env, site string) (string, error)
 	// PlanPromotion says what publishing site into to changes, without
