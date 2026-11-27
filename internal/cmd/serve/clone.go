@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rahacloud/wpfleet/internal/infra/gitrepo"
@@ -45,6 +46,11 @@ type clone struct {
 	mu      sync.Mutex
 	current string
 	retired []retiredSnapshot
+
+	// dir is current for readers, which must not wait on mu: Sync and
+	// Commit hold mu through a fetch or a push, and every page reads Dir
+	// for the brand's images, the sign-in page and the favicon included.
+	dir atomic.Pointer[string]
 }
 
 // retiredSnapshot is a snapshot a newer commit replaced, and when.
@@ -62,7 +68,7 @@ func newClone(repo *gitrepo.Repo, root string, log *slog.Logger) (*clone, error)
 
 	c := &clone{
 		repo: repo, root: root, log: log, now: time.Now,
-		mu: sync.Mutex{}, current: "", retired: nil,
+		mu: sync.Mutex{}, current: "", retired: nil, dir: atomic.Pointer[string]{},
 	}
 
 	err = c.removeStale()
@@ -119,12 +125,15 @@ func (c *clone) CommitAuthor(ctx context.Context, sha string) (gitrepo.Signature
 	return c.repo.CommitAuthor(ctx, sha)
 }
 
-// Dir is the snapshot of the newest commit, which holds the fleet.
+// Dir is the snapshot of the newest commit, which holds the fleet. It never
+// waits for a Sync or a Commit in progress; it returns the snapshot from
+// before it until that one is taken.
 func (c *clone) Dir() string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	if dir := c.dir.Load(); dir != nil {
+		return *dir
+	}
 
-	return c.current
+	return ""
 }
 
 // snapshot copies the clone's head into its snapshot directory, unless it is
@@ -157,6 +166,7 @@ func (c *clone) snapshot() error {
 	}
 
 	c.current = dir
+	c.dir.Store(&dir)
 	c.prune()
 
 	return nil

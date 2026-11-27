@@ -71,6 +71,29 @@ func TestSnapshotHoldsTheFleetWithoutGit(t *testing.T) {
 	testutil.True(t, "no .git in the snapshot", !exists(t, filepath.Join(dir, ".git")))
 }
 
+// Dir must not wait for a Sync or a Commit: they hold the clone's lock
+// through the network, and every page, the sign-in page included, reads Dir
+// for the brand's images.
+func TestDirDoesNotWaitForASync(t *testing.T) {
+	t.Parallel()
+
+	c, root := newTestClone(t, remote(t, fleetFiles()), time.Now)
+
+	release := c.Hold()
+	defer release()
+
+	got := make(chan string, 1)
+
+	go func() { got <- c.Dir() }()
+
+	select {
+	case dir := <-got:
+		testutil.Equal(t, "Dir during a sync", dir, filepath.Join(root, c.Head()))
+	case <-time.After(5 * time.Second):
+		t.Fatal("Dir waited for the lock a sync holds")
+	}
+}
+
 func TestSyncMovesToANewSnapshotAndKeepsTheOld(t *testing.T) {
 	t.Parallel()
 

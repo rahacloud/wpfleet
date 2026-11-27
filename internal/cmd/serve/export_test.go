@@ -80,3 +80,11 @@ func FilterGroups(
 func CheckBranding(dir string, b config.Branding) error {
 	return checkBranding(dir, b)
 }
+
+// Hold takes the lock a Sync or a Commit holds through its fetch or push,
+// and returns its release.
+func (c *clone) Hold() func() {
+	c.mu.Lock()
+
+	return c.mu.Unlock
+}
