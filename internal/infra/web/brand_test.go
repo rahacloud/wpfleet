@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -217,6 +218,11 @@ func TestWordmarkLogo(t *testing.T) {
 		testutil.NotContains(t, what+": no visible name beside it", body, "wf-brand-name")
 		testutil.Contains(t, what+": the title keeps the name", body, " · Northwind Media</title>")
 	}
+
+	// The sign-in card's heading names the brand right after its logo, so
+	// the logo is decoration there.
+	decorative := regexp.MustCompile(`<img class="wf-signin-logo" src="/brand/logo\?v=[^"]+" alt="">`)
+	testutil.True(t, "sign-in: the card's logo is decoration", decorative.MatchString(signIn))
 
 	broken := newHarnessWith(t, func(d *web.Deps) {
 		b := northwind(dir)

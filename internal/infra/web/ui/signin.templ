@@ -15,7 +15,9 @@ templ SignInPage(p Page, v SignInView) {
 	@Layout(p) {
 		<section class="wf-card wf-signin">
 			if p.Brand.LogoURL != "" {
-				<img class="wf-signin-logo" src={ p.Brand.LogoURL } alt={ p.Brand.Name }/>
+				// The heading below names the brand, so the logo is decoration
+				// and a screen reader does not read the name twice.
+				<img class="wf-signin-logo" src={ p.Brand.LogoURL } alt=""/>
 			}
 			<h1>{ p.L.T(i18n.SignInHeading, p.Brand.Name) }</h1>
 			<p>{ p.L.T(i18n.SignInIntro) }</p>
