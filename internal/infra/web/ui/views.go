@@ -256,6 +256,19 @@ type RestoreView struct {
 	CSRF string
 	// Backups are the site's backups.
 	Backups BackupsView
+	// Stamp is the backup chosen before, when the form comes back with an
+	// error; empty chooses none.
+	Stamp string
+	// Uploads says the uploads were chosen before.
+	Uploads bool
+	// Typed is the name typed before.
+	Typed string
+	// Error says why the form came back, in the person's words; empty on
+	// the first visit.
+	Error string
+	// ConfirmError says the error is about the typed name, so the field is
+	// marked invalid.
+	ConfirmError bool
 }
 
 // Restorable says whether any backup can be restored.

@@ -349,7 +349,8 @@ func TestRestoreFormNeedsRestore(t *testing.T) {
 	page := h.request(http.MethodGet, "/sites/staging/blog/restore", nil, cookie).Body.String()
 	testutil.Contains(t, "platform restore page", page,
 		"content and settings (posts, pages, users and plugin settings)", "This cannot be undone.",
-		`data-action="restore"`, `name="stamp" value="20261126T020000Z"`, `pattern="blog"`,
+		`data-action="restore"`, `name="stamp" value="20261126T020000Z"`, `autocapitalize="none"`, `autocorrect="off"`,
+		`<p id="restore-confirm-help" class="wf-help">Type blog exactly as it is written here.</p>`,
 		`<label for="restore-confirm">To confirm, type the site&#39;s name: blog</label>`, "Yesterday at 02:00 UTC")
 
 	// A backup without a database copy cannot be chosen.
@@ -974,19 +975,41 @@ func TestRestoreNeedsTheSiteName(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
+	stamp, err := backup.ParseStamp("20261126T020000Z")
+	testutil.NoError(t, err)
+
+	h.ops.backups = []ops.BackupRow{{Stamp: stamp, DumpSize: 2048, HasDump: true, ChangedFiles: 0, Expires: testNow}}
 	cookie, csrf := h.as(platform(), "")
 
-	f := form(csrf, "stamp", "20261126T020000Z", "confirm", siteShop)
+	// A name that does not match brings the restore page back, with the
+	// error under the field and the choices kept; it is no refusal page.
+	f := form(csrf, "stamp", "20261126T020000Z", "confirm", siteShop, "uploads", "1")
 	w := h.request(http.MethodPost, "/sites/staging/blog/restore", f, cookie)
 	testutil.Equal(t, "status", w.Code, http.StatusBadRequest)
-	testutil.Contains(t, "page", w.Body.String(), "nothing was restored", `href="/sites/staging/blog/restore"`)
+
+	page := w.Body.String()
+	testutil.Contains(t, "page", page, "<h1>Restore a backup of blog</h1>",
+		`<p id="restore-confirm-error" class="wf-page-restore-error" role="alert">`+
+			`The name you typed is not the site&#39;s name, so nothing was restored.</p>`,
+		`aria-invalid="true" aria-describedby="restore-confirm-error restore-confirm-help"`,
+		`value="20261126T020000Z" required checked`, `aria-describedby="restore-uploads-help" checked`, `value="shop"`)
+	testutil.NotContains(t, "page", page, "Not allowed")
 	testutil.Equal(t, "restores", len(h.ops.called("Restore")), 0)
+
 	refusal := h.audit.only(t)
 	testutil.Equal(t, "refusal audited", refusal.Result, audit.ResultDenied)
 	testutil.Equal(t, "refusal not allowed", refusal.Allowed, false)
 
+	// No backup chosen says so at the top of the form.
+	w = h.request(http.MethodPost, "/sites/staging/blog/restore", form(csrf, "confirm", siteBlog), cookie)
+	testutil.Equal(t, "no stamp", w.Code, http.StatusBadRequest)
+	testutil.Contains(t, "no stamp", w.Body.String(),
+		`<p id="restore-error" class="wf-page-restore-error" role="alert">Choose a backup`)
+	testutil.NotContains(t, "no stamp", w.Body.String(), `aria-invalid`)
+
+	// A phone capitalises the first letter; the name still matches.
 	w = h.request(http.MethodPost, "/sites/staging/blog/restore",
-		form(csrf, "stamp", "20261126T020000Z", "confirm", "blog", "uploads", "1"), cookie)
+		form(csrf, "stamp", "20261126T020000Z", "confirm", " Blog ", "uploads", "1"), cookie)
 	testutil.Equal(t, "status", w.Code, http.StatusSeeOther)
 	h.wait()
 

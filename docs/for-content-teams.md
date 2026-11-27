@@ -75,7 +75,7 @@ This publishes the website's design and plugins, not its posts and pages. Posts,
 Every website is backed up automatically every night: its posts, pages, settings and uploaded media. Backups are kept for two weeks by default.
 
 - **Back up now** makes an extra backup at once, for example before a big change.
-- **Restore a backup** opens a page that says what a restore does. Choose a backup from the list, decide whether to restore the uploaded files too, and type the website's name to confirm. The name is there so that nobody restores the wrong website by mistake; if it does not match, nothing is restored and you can type it again.
+- **Restore a backup** opens a page that says what a restore does. Choose a backup from the list, decide whether to restore the uploaded files too, and type the website's name to confirm. The name is there so that nobody restores the wrong website by mistake; capital letters and spaces around it do not matter. If it does not match, nothing is restored, and the same page comes back with your choices kept and a line under the name that says what to fix.
 
 A restore replaces the website's posts, pages, users and plugin settings with the copy in the backup. Everything changed since that backup is lost, and a restore cannot be undone. If you may want today's content back, press **Back up now** first.
 

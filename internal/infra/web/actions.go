@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/labstack/echo/v5"
 
@@ -360,12 +361,34 @@ func (s *Server) restore(c *echo.Context) error {
 
 	stamp := c.FormValue("stamp")
 	uploads := c.FormValue("uploads") == "1"
+	typed := c.FormValue("confirm")
 
-	if c.FormValue("confirm") != t.site || stamp == "" {
-		s.auditTarget(c.Request().Context(), t, audit.ResultDenied, "the typed confirmation did not match the site's name")
+	// The name is compared without case and surrounding spaces: a phone
+	// keyboard capitalises the first letter, and the confirmation is there
+	// to make the person stop and read, not to test their typing.
+	matched := strings.EqualFold(strings.TrimSpace(typed), t.site)
 
-		// Back to the restore page, to choose and type again.
-		return s.refuse(c, http.StatusBadRequest, s.lang(c).T(i18n.RestoreMismatch), ui.ActionPath(t.env, t.site, "restore"))
+	if !matched || stamp == "" {
+		detail := "no backup was chosen"
+		if !matched {
+			detail = "the typed confirmation did not match the site's name"
+		}
+
+		s.auditTarget(c.Request().Context(), t, audit.ResultDenied, detail)
+
+		// The restore page again, with the error where it belongs and the
+		// choices kept, to correct and send again.
+		l := s.lang(c)
+		view := s.restoreView(c, t.env, t.site)
+		view.Stamp, view.Uploads, view.Typed = stamp, uploads, typed
+		view.ConfirmError = !matched
+		view.Error = l.T(i18n.RestoreChooseFirst)
+
+		if !matched {
+			view.Error = l.T(i18n.RestoreMismatch)
+		}
+
+		return s.renderRestore(c, http.StatusBadRequest, view)
 	}
 
 	release, ok, err := s.lock(c, t)

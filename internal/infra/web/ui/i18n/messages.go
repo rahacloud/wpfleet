@@ -408,6 +408,10 @@ const (
 	NewVersionPublished
 	// SiteUpdated says an update of the site finished, in plain words.
 	SiteUpdated
+	// RestoreConfirmHelp says how to type the site's name to confirm a restore (%s: the name).
+	RestoreConfirmHelp
+	// RestoreChooseFirst says no backup was chosen, so nothing was restored.
+	RestoreChooseFirst
 
 	// keyCount is the number of messages; it stays last.
 	keyCount
@@ -611,6 +615,8 @@ var english = [keyCount]string{
 	AlreadyHasVersion:   "This site already has that version; updating it again.",
 	NewVersionPublished: "The new version is published.",
 	SiteUpdated:         "The site is updated.",
+	RestoreConfirmHelp:  "Type %s exactly as it is written here.",
+	RestoreChooseFirst:  "Choose a backup to restore; nothing was restored.",
 }
 
 // persian is the Persian catalogue.
@@ -811,4 +817,6 @@ var persian = [keyCount]string{
 	AlreadyHasVersion:   "این سایت همین نسخه را دارد؛ دوباره به‌روز می‌شود.",
 	NewVersionPublished: "نسخهٔ تازه منتشر شد.",
 	SiteUpdated:         "سایت به‌روز شد.",
+	RestoreConfirmHelp:  "%s را دقیقاً همان‌طور که اینجا نوشته شده بنویسید.",
+	RestoreChooseFirst:  "پشتیبانی را برای بازگردانی انتخاب کنید؛ چیزی بازگردانده نشد.",
 }

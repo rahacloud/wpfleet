@@ -366,10 +366,22 @@ func (s *Server) restorePage(c *echo.Context) error {
 		return err
 	}
 
-	l := s.lang(c)
-	view := ui.RestoreView{Env: env, Site: site, CSRF: sessionOf(c).CSRF, Backups: s.backups(c, env, site)}
+	return s.renderRestore(c, http.StatusOK, s.restoreView(c, env, site))
+}
 
-	return render(c, http.StatusOK, ui.RestorePage(s.page(c, l.T(i18n.RestoreTitle, site)), view))
+// restoreView is the restore page of site in env with nothing chosen yet.
+func (s *Server) restoreView(c *echo.Context, env, site string) ui.RestoreView {
+	return ui.RestoreView{
+		Env: env, Site: site, CSRF: sessionOf(c).CSRF, Backups: s.backups(c, env, site),
+		Stamp: "", Uploads: false, Typed: "", Error: "", ConfirmError: false,
+	}
+}
+
+// renderRestore writes the restore page.
+func (s *Server) renderRestore(c *echo.Context, status int, view ui.RestoreView) error {
+	l := s.lang(c)
+
+	return render(c, status, ui.RestorePage(s.page(c, l.T(i18n.RestoreTitle, view.Site)), view))
 }
 
 // backups reads a site's backups. A site whose backups are off has nothing

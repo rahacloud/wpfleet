@@ -10,8 +10,11 @@ templ RestorePage(p Page, v RestoreView) {
 		<h1>{ p.L.T(i18n.RestoreTitle, v.Site) }</h1>
 		<section class="wf-card wf-stack wf-page-restore-intro">
 			<p>{ p.L.T(i18n.RestoreIntro) }</p>
-			<p><span class="wf-badge wf-badge-warn">{ p.L.T(i18n.RestoreWarning) }</span></p>
+			<p class="wf-page-restore-warning">{ p.L.T(i18n.RestoreWarning) }</p>
 		</section>
+		if v.Error != "" && (v.Backups.Failed || !v.Restorable()) {
+			<p class="wf-page-restore-error" role="alert">{ v.Error }</p>
+		}
 		switch  {
 			case v.Backups.Failed:
 				<p><span class="wf-badge wf-badge-bad">{ p.L.T(i18n.BackupsUnavailable) }</span></p>
@@ -25,15 +28,20 @@ templ RestorePage(p Page, v RestoreView) {
 }
 
 // restoreForm is the choice of backup, the uploads, and the confirmation.
+// When it comes back with an error, the error stands at the top and under
+// the field it is about, and the choices made before are kept.
 templ restoreForm(l i18n.Lang, v RestoreView) {
 	<form class="wf-card wf-stack wf-page-restore" method="post" action={ templ.SafeURL(ActionPath(v.Env, v.Site, "restore")) }>
 		<input type="hidden" name="csrf" value={ v.CSRF }/>
+		if v.Error != "" && !v.ConfirmError {
+			<p id="restore-error" class="wf-page-restore-error" role="alert">{ v.Error }</p>
+		}
 		<fieldset class="wf-stack">
 			<legend>{ l.T(i18n.ChooseBackup) }</legend>
 			for _, r := range v.Backups.Rows {
 				if r.HasDump {
 					<div class="wf-row">
-						<input type="radio" id={ stampID(r.Stamp) } name="stamp" value={ r.Stamp } required/>
+						<input type="radio" id={ stampID(r.Stamp) } name="stamp" value={ r.Stamp } required checked?={ r.Stamp == v.Stamp }/>
 						<label for={ stampID(r.Stamp) }>
 							@backupLine(l, r, v.Backups.Now)
 						</label>
@@ -43,14 +51,35 @@ templ restoreForm(l i18n.Lang, v RestoreView) {
 		</fieldset>
 		<div class="wf-stack">
 			<div class="wf-row">
-				<input type="checkbox" id="restore-uploads" name="uploads" value="1" aria-describedby="restore-uploads-help"/>
+				<input type="checkbox" id="restore-uploads" name="uploads" value="1" aria-describedby="restore-uploads-help" checked?={ v.Uploads }/>
 				<label for="restore-uploads">{ l.T(i18n.RestoreUploads) }</label>
 			</div>
 			<p id="restore-uploads-help" class="wf-help">{ l.T(i18n.RestoreUploadsHelp) }</p>
 		</div>
 		<div class="wf-stack">
 			<label for="restore-confirm">{ l.T(i18n.RestoreConfirmLabel, v.Site) }</label>
-			<input id="restore-confirm" type="text" name="confirm" required autocomplete="off" spellcheck="false" dir="ltr" pattern={ v.Site }/>
+			<input
+				id="restore-confirm"
+				type="text"
+				name="confirm"
+				value={ v.Typed }
+				required
+				autocomplete="off"
+				autocapitalize="none"
+				autocorrect="off"
+				spellcheck="false"
+				dir="ltr"
+				if v.ConfirmError {
+					aria-invalid="true"
+					aria-describedby="restore-confirm-error restore-confirm-help"
+				} else {
+					aria-describedby="restore-confirm-help"
+				}
+			/>
+			if v.ConfirmError {
+				<p id="restore-confirm-error" class="wf-page-restore-error" role="alert">{ v.Error }</p>
+			}
+			<p id="restore-confirm-help" class="wf-help">{ l.T(i18n.RestoreConfirmHelp, v.Site) }</p>
 		</div>
 		<div class="wf-row">
 			<button type="submit" class="wf-btn wf-btn-danger" data-action="restore">{ l.T(i18n.RestoreSubmit) }</button>
