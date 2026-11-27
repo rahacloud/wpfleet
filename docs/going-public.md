@@ -24,12 +24,43 @@ Fix what the trial finds on `main` first. Then change the status line at the top
 
 Making the repository public publishes every commit on every branch, not only what `main` has today. Run the history scan over all of it before anything else changes, and go on only when it is clean. It looks for:
 
-- **Secrets** in any commit, with a scanner such as [gitleaks](https://github.com/gitleaks/gitleaks) over the full history (`gitleaks git --log-opts=--all`).
+- **Secrets** in any commit, with a scanner such as [gitleaks](https://github.com/gitleaks/gitleaks) over the full history (`gitleaks git --log-opts=--all`). gitleaks reads `.gitleaks.toml` at the root, which allows the two values it is known to mistake for secrets, so a clean history reports no leaks.
 - **Client data** in any commit, message or file: the names, hosts, addresses, registries, namespaces and credentials of the organizations that wpfleet has been used for. That list of names lives outside this repository, and must never be committed to it.
 - **Commit metadata**: the author and committer names and email addresses of every commit become public too.
 - **Branches and tags**: delete every branch that is not `main` and is not meant to be public. There must be no tag yet (see step 7).
 
 When the scan finds a secret, rotate the secret first, whatever else happens: it was in the history, so treat it as leaked. When it finds a secret or client data, rewrite the history (for example with [git filter-repo](https://github.com/newren/git-filter-repo)) and force-push before the repository becomes public. After that moment a rewrite is too late, because forks and caches keep the old commits.
+
+### What the scan of 2026-11-27 found
+
+The scan of 2026-11-27 covered every commit, message, file and image, and found no secret and no client data in any file. It left two decisions for the maintainer, and both must be taken before step 5.
+
+**Decision 1, required: rewrite the history, or do not go public.** The message of commit `88aa0e1` ("Add the server's chart and image, and build the image in CI") names the registry mirror of an organization that wpfleet was used for, in the sentence "Docker Hub images also pull through the … mirror if gcr.io stops being reachable". The name is in that message only, not in any file, so a new commit cannot remove it. The rewrite replaces it with "a registry mirror", changes the hash of `88aa0e1` and of every commit after it, and needs a force-push to `main`. Do it before step 6, whose ruleset blocks force-pushes. Run it in a fresh clone, never in a working clone:
+
+```bash
+git clone git@github.com:rahacloud/wpfleet.git wpfleet-rewrite
+cd wpfleet-rewrite
+printf '%s\n' 'regex:pull through the \S+ mirror==>pull through a registry mirror' > ../wpfleet-messages.txt
+git filter-repo --replace-message ../wpfleet-messages.txt
+git log --all --format=%B | grep -c 'pull through the'   # expect 0
+```
+
+Then search the rewritten history once more for every name on the private list, and expect nothing. git filter-repo removes the `origin` remote, so add it back and push:
+
+```bash
+git remote add origin git@github.com:rahacloud/wpfleet.git
+git push --force origin main
+```
+
+Afterwards, every other clone and worktree has old history: delete it and clone again, or `git fetch origin && git reset --hard origin/main` on a clean `main`. A commit hash quoted anywhere from before the rewrite stops resolving. GitHub can still serve the old commits to someone who knows their hashes until it collects them; the only pull request so far (#1) was closed before `88aa0e1`, so no pull request ref keeps them. If that matters, ask GitHub Support to purge the cached views before step 5.
+
+**Decision 2, optional: the author email.** Every commit carries the maintainer's personal email address as author and committer, and it becomes public with the history. Keep it, or replace it with the GitHub noreply address (`<id>+<login>@users.noreply.github.com`; `gh api user --jq '"\(.id)+\(.login)"'` prints the first part) in the same rewrite. To replace it, write one mailmap line, `Name <id+login@users.noreply.github.com> <old address>`, to `../wpfleet-mailmap.txt`, and run this in place of the `git filter-repo` line above:
+
+```bash
+git filter-repo --replace-message ../wpfleet-messages.txt --mailmap ../wpfleet-mailmap.txt
+```
+
+Either way, set `user.email` in every clone to the address chosen, so new commits match.
 
 ## 4. What else becomes visible
 
