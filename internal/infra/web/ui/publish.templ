@@ -1,0 +1,27 @@
+package ui
+
+import "github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
+
+// PublishPage asks before a publish: which version goes where, and, for
+// the live site, that visitors see it at once. A publish puts a new version
+// on a site, so one click on a card must never do it by mistake.
+templ PublishPage(p Page, v PublishView) {
+	@Layout(p) {
+		<h1>{ p.L.T(i18n.PublishConfirmTitle, v.Site) }</h1>
+		<section class="wf-card wf-stack wf-page-publish-confirm">
+			if v.Changed {
+				<p>{ p.L.T(i18n.PublishConfirmIntro, v.From, v.Env) }</p>
+				if v.Live {
+					<p class="wf-page-restore-warning">{ p.L.T(i18n.PublishConfirmLive, v.Env) }</p>
+				}
+				<form method="post" action={ templ.SafeURL(ActionPath(v.Env, v.Site, "promote")) }>
+					<input type="hidden" name="csrf" value={ v.CSRF }/>
+					<button type="submit" class="wf-btn wf-btn-primary" data-action="promote">{ p.L.T(i18n.PublishNow) }</button>
+				</form>
+			} else {
+				<p>{ p.L.T(i18n.NothingToPublish, v.Env, v.From) }</p>
+			}
+		</section>
+		<p><a href={ templ.SafeURL(SitePath(v.Env, v.Site)) }>{ p.L.T(i18n.Cancel) }</a></p>
+	}
+}

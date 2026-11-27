@@ -110,10 +110,7 @@ templ siteActions(l i18n.Lang, s SiteView) {
 		}
 		if s.CanPublish {
 			<div class="wf-card wf-stack">
-				<form method="post" action={ templ.SafeURL(ActionPath(s.Env, s.Site, "promote")) }>
-					<input type="hidden" name="csrf" value={ s.CSRF }/>
-					<button type="submit" class="wf-btn wf-btn-primary" data-action="promote" aria-describedby="help-publish">{ l.T(i18n.Publish, s.PromoteFrom, s.Env) }</button>
-				</form>
+				<a class="wf-btn wf-btn-secondary" href={ templ.SafeURL(ActionPath(s.Env, s.Site, "promote")) } data-action="promote" aria-describedby="help-publish">{ l.T(i18n.Publish, s.PromoteFrom, s.Env) }</a>
 				<p id="help-publish" class="wf-help">{ l.T(i18n.PublishHelp, s.PromoteFrom, s.Env) }</p>
 			</div>
 		}

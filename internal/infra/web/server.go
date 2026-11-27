@@ -186,6 +186,7 @@ func (s *Server) routes() {
 	site.GET("/history", s.historyFragment)
 	site.GET("/backups", s.backupsFragment)
 	site.GET("/restore", s.restorePage)
+	site.GET("/promote", s.publishPage)
 	site.POST("/deploy", s.deploy)
 	site.POST("/promote", s.promote)
 	site.POST("/admin", s.admin)

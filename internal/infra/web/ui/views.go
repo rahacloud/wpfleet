@@ -321,3 +321,19 @@ type Message struct {
 	// Support is whom to ask; shown on a refusal or an error.
 	Support Support
 }
+
+// PublishView is the page that asks before publishing: what changes, and
+// whether visitors see it at once.
+type PublishView struct {
+	// Env is the environment the version goes to, and Site the site.
+	Env, Site string
+	// From is the environment the version comes from.
+	From string
+	// Live says Env is the environment visitors see.
+	Live bool
+	// Changed says From runs another version; when false there is nothing
+	// to publish and no button.
+	Changed bool
+	// CSRF is the session's token for the form.
+	CSRF string
+}

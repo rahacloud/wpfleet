@@ -717,14 +717,17 @@ details.restore form {
   font-size: 1.2rem;
 }
 
+/* The site's name leads to its page; it looks like a link, since a touch
+ * screen has no hover to show it. */
 .wf-page-site h2 a {
-  color: var(--wf-text);
-  text-decoration: none;
+  color: var(--wf-link);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
 }
 
 .wf-page-site h2 a:hover,
 .wf-page-site h2 a:focus-visible {
-  text-decoration: underline;
+  text-decoration-thickness: 2px;
 }
 
 .wf-page-envs {

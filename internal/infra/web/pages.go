@@ -384,6 +384,51 @@ func (s *Server) renderRestore(c *echo.Context, status int, view ui.RestoreView)
 	return render(c, status, ui.RestorePage(s.page(c, l.T(i18n.RestoreTitle, view.Site)), view))
 }
 
+// publishPage asks before a publish, for people who may publish: deploy
+// here and view on the environment it publishes from.
+func (s *Server) publishPage(c *echo.Context) error {
+	env, site := c.Param("env"), c.Param("site")
+	sess := sessionOf(c)
+
+	if !s.allows(sess, env, site, access.Deploy) {
+		return echo.ErrForbidden
+	}
+
+	err := s.viewable(c, env, site)
+	if err != nil {
+		return err
+	}
+
+	envs, err := s.deps.Ops.Environments()
+	if err != nil {
+		return err
+	}
+
+	order := liveOrder(envs)
+
+	i := slices.IndexFunc(order, func(e orderedEnv) bool { return e.Name == env })
+	if i < 0 || order[i].PromoteFrom == "" {
+		return echo.ErrNotFound
+	}
+
+	from := order[i].PromoteFrom
+	if !s.allows(sess, from, site, access.View) {
+		return echo.ErrForbidden
+	}
+
+	plan, err := s.deps.Ops.PlanPromotion(env, site)
+	if err != nil {
+		return err
+	}
+
+	l := s.lang(c)
+	view := ui.PublishView{
+		Env: env, Site: site, From: from, Live: order[i].live, Changed: plan.Changed(), CSRF: sess.CSRF,
+	}
+
+	return render(c, http.StatusOK, ui.PublishPage(s.page(c, l.T(i18n.PublishConfirmTitle, site)), view))
+}
+
 // backups reads a site's backups. A site whose backups are off has nothing
 // to list, so a bucket the server cannot read is then no failure.
 func (s *Server) backups(c *echo.Context, env, site string) ui.BackupsView {

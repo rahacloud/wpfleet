@@ -33,12 +33,13 @@ The first page, **Your sites**, has one card for each website. A card shows:
 - the website's name, and **View site**, which opens the website in a new tab;
 - one line for each copy you may see (live first, then staging, then development), with its status in words: **Online**, **Starting** (it is coming up, for example after a publish), **Down**, or **Status unknown** (the page could not check);
 - **Open admin** on each line where you may sign in to the dashboard;
-- when the last backup was made, for example "Backed up 3 hours ago";
+- when the last backup was made, for example "Backed up 3 hours ago", or "Could not check the backups right now" when the page could not check;
+- **Backups and more**, which opens the website's own page, where you back up and restore;
 - **Publish staging to production** (with your environments' names), when staging has a newer version than production and you are allowed to publish it.
 
 When you work on more than six websites, a search box at the top finds a website by part of its name or address as you type.
 
-Press a website's name, or the name of one of its copies, to open its own page.
+Press **Backups and more**, the website's name, or the name of one of its copies, to open its own page.
 
 ## A website's page
 
@@ -64,7 +65,7 @@ While a backup is being restored on a website, **Open admin** is greyed out for 
 
 ## Publish
 
-When a change is ready on staging, for example a new theme version or an updated plugin, **Publish staging to production** puts the same version on the live website. Only people whose team is allowed to publish see this button.
+When a change is ready on staging, for example a new theme version or an updated plugin, **Publish staging to production** puts the same version on the live website. It first opens a page that says which version goes where and, for the live website, that visitors see it as soon as it is done; nothing changes until you press **Publish now** there. Only people whose team is allowed to publish see this button.
 
 Every publication is recorded with your name, so your team can always see who published what and when.
 
@@ -83,7 +84,7 @@ When you restore the uploaded files too, images and documents changed or deleted
 
 ## While an action runs
 
-After you press **Publish**, **Back up now** or **Restore the site**, a page shows the steps in plain words as they happen. This can take a few minutes. You may leave the page; the work goes on.
+After you press **Publish now**, **Back up now** or **Restore the site**, a page shows the steps in plain words as they happen. This can take a few minutes. You may leave the page; the work goes on.
 
 When it ends, the page says what happened and what to do next: check the website, or try again and whom to ask. If it failed, it says what failed, for example "The backup failed."
 

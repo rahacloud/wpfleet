@@ -412,6 +412,18 @@ const (
 	RestoreConfirmHelp
 	// RestoreChooseFirst says no backup was chosen, so nothing was restored.
 	RestoreChooseFirst
+	// BackupsAndMore leads from a card to the site's own page, with its backups and other actions.
+	BackupsAndMore
+	// PublishConfirmTitle heads the page that asks before publishing (%s: site).
+	PublishConfirmTitle
+	// PublishConfirmIntro says what publishing changes (%s: from, %s: to).
+	PublishConfirmIntro
+	// PublishConfirmLive says the target is the live site, so visitors see the change at once (%s: to).
+	PublishConfirmLive
+	// PublishNow is the button that publishes after the person read what it changes.
+	PublishNow
+	// NothingToPublish says the target already has the source's version (%s: to, %s: from).
+	NothingToPublish
 
 	// keyCount is the number of messages; it stays last.
 	keyCount
@@ -617,6 +629,12 @@ var english = [keyCount]string{
 	SiteUpdated:         "The site is updated.",
 	RestoreConfirmHelp:  "Type %s exactly as it is written here.",
 	RestoreChooseFirst:  "Choose a backup to restore; nothing was restored.",
+	BackupsAndMore:      "Backups and more",
+	PublishConfirmTitle: "Publish the new version of %s?",
+	PublishConfirmIntro: "The version that %s shows now will be put on %s.",
+	PublishConfirmLive:  "%s is the live site: visitors see the new version as soon as it is done.",
+	PublishNow:          "Publish now",
+	NothingToPublish:    "%s already has the same version as %s; there is nothing new to publish.",
 }
 
 // persian is the Persian catalogue.
@@ -819,4 +837,10 @@ var persian = [keyCount]string{
 	SiteUpdated:         "سایت به‌روز شد.",
 	RestoreConfirmHelp:  "%s را دقیقاً همان‌طور که اینجا نوشته شده بنویسید.",
 	RestoreChooseFirst:  "پشتیبانی را برای بازگردانی انتخاب کنید؛ چیزی بازگردانده نشد.",
+	BackupsAndMore:      "پشتیبان‌ها و بیشتر",
+	PublishConfirmTitle: "نسخهٔ تازهٔ %s منتشر شود؟",
+	PublishConfirmIntro: "نسخه‌ای که اکنون در %s است در %s قرار می‌گیرد.",
+	PublishConfirmLive:  "%s سایت اصلی است: بازدیدکنندگان نسخهٔ تازه را به محض پایان کار می‌بینند.",
+	PublishNow:          "همین حالا منتشر شود",
+	NothingToPublish:    "%s همان نسخهٔ %s را دارد؛ چیز تازه‌ای برای انتشار نیست.",
 }

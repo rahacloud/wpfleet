@@ -494,8 +494,10 @@ func TestHomeCards(t *testing.T) {
 	testutil.Contains(t, "platform cards", page,
 		"Your sites", "2 sites", `aria-labelledby="site-blog"`, `href="https://blog.production.example.com"`,
 		"View site", "Online", "Live", `action="/sites/production/blog/admin"`, "Open admin",
-		"A newer version is waiting in development.", `action="/sites/staging/blog/promote"`,
-		"Publish development to staging", `hx-get="/sites/production/blog/status"`)
+		"A newer version is waiting in development.", `href="/sites/staging/blog/promote"`,
+		"Publish development to staging", `hx-get="/sites/production/blog/status"`,
+		`<a class="wf-btn wf-btn-secondary" href="/sites/production/blog">Backups and more</a>`)
+	testutil.NotContains(t, "publish asks first", page, `action="/sites/staging/blog/promote"`)
 
 	for _, hidden := range []string{tagNew, tagOld, "Commit", "Drift", "01234567", `type="search"`} {
 		testutil.NotContains(t, "platform cards", page, hidden)
@@ -526,6 +528,38 @@ func TestHomeCards(t *testing.T) {
 	page = h.request(http.MethodGet, "/", nil, cookie).Body.String()
 	testutil.NotContains(t, "no chain", page, ">Live<")
 	testutil.Contains(t, "no chain", page, `action="/sites/development/blog/admin"`)
+}
+
+// Publish on a card or a site page leads to a page that says what changes
+// and asks; only its button publishes.
+func TestPublishAsksFirst(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.ops.plan.To = envProd
+	cookie, _ := h.as(platform(), "")
+
+	page := h.request(http.MethodGet, "/sites/production/blog/promote", nil, cookie).Body.String()
+	testutil.Contains(t, "confirmation", page, "Publish the new version of blog?",
+		"The version that staging shows now will be put on production.",
+		"production is the live site", `action="/sites/production/blog/promote"`, "Publish now",
+		`href="/sites/production/blog">Cancel`)
+	testutil.Equal(t, "nothing published yet", len(h.ops.called("Deploy")), 0)
+
+	page = h.request(http.MethodGet, "/sites/staging/blog/promote", nil, cookie).Body.String()
+	testutil.NotContains(t, "not live", page, "is the live site")
+
+	h.ops.plan.Target = h.ops.plan.Current
+	page = h.request(http.MethodGet, "/sites/staging/blog/promote", nil, cookie).Body.String()
+	testutil.Contains(t, "nothing new", page, "there is nothing new to publish")
+	testutil.NotContains(t, "nothing new", page, `data-action="promote"`)
+
+	editorCookie, _ := h.as(editor(), "")
+	w := h.request(http.MethodGet, "/sites/staging/blog/promote", nil, editorCookie)
+	testutil.Equal(t, "editor", w.Code, http.StatusForbidden)
+
+	w = h.request(http.MethodGet, "/sites/development/blog/promote", nil, cookie)
+	testutil.Equal(t, "nothing promotes into development", w.Code, http.StatusNotFound)
 }
 
 // More than a handful of sites get a search box, and ?q= filters the cards

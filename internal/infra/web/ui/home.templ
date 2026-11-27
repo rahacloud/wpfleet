@@ -70,8 +70,9 @@ templ siteSearch(l i18n.Lang, query string) {
 }
 
 // siteCard is one site: its name and address, a status per environment with
-// "Open admin" where the person may log in, the last backup, and "Publish"
-// when a newer version waits.
+// "Open admin" where the person may log in, the last backup, "Backups and
+// more" to the site's page, and "Publish" when a newer version waits, which
+// leads to a page that asks first.
 templ siteCard(l i18n.Lang, c SiteCard, csrf string) {
 	<article class="wf-card wf-stack wf-page-site" aria-labelledby={ "site-" + c.Site }>
 		<div class="wf-stack wf-page-site-head">
@@ -109,13 +110,15 @@ templ siteCard(l i18n.Lang, c SiteCard, csrf string) {
 			}
 		</ul>
 		<p class="wf-muted wf-page-backup" hx-get={ ActionPath(c.Primary().Env, c.Site, "status") } hx-trigger="load" hx-swap="outerHTML">{ l.T(i18n.Loading) }</p>
+		<p class="wf-row">
+			<a class="wf-btn wf-btn-secondary" href={ templ.SafeURL(SitePath(c.Primary().Env, c.Site)) }>{ l.T(i18n.BackupsAndMore) }</a>
+		</p>
 		if c.Publish != nil {
 			<div class="wf-stack wf-page-publish">
 				<p class="wf-help">{ l.T(i18n.NewerWaiting, c.Publish.From) }</p>
-				<form method="post" action={ templ.SafeURL(ActionPath(c.Publish.To, c.Site, "promote")) }>
-					<input type="hidden" name="csrf" value={ csrf }/>
-					<button type="submit" class="wf-btn wf-btn-primary" data-action="promote">{ l.T(i18n.Publish, c.Publish.From, c.Publish.To) }</button>
-				</form>
+				<p class="wf-row">
+					<a class="wf-btn wf-btn-secondary" href={ templ.SafeURL(ActionPath(c.Publish.To, c.Site, "promote")) } data-action="promote">{ l.T(i18n.Publish, c.Publish.From, c.Publish.To) }</a>
+				</p>
 			</div>
 		}
 	</article>
