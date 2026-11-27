@@ -219,6 +219,27 @@ func TestServeLogo(t *testing.T) {
 		"--wf-primary:"+brand.DefaultPrimaryColor)
 }
 
+// A page links the stylesheet with a hash of its content, so a browser that
+// kept the stylesheet of an older wpfleet fetches the new one after an
+// upgrade instead of showing new pages with old styles.
+func TestStylesheetIsVersioned(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	css := ui.StylesheetURL()
+	testutil.True(t, "versioned", strings.HasPrefix(css, "/static/app.css?v="))
+	testutil.Contains(t, "the sign-in page links it", h.request(http.MethodGet, "/auth/signin", nil, nil).Body.String(),
+		`href="`+css+`"`)
+
+	w := h.request(http.MethodGet, css, nil, nil)
+	testutil.Equal(t, "status", w.Code, http.StatusOK)
+	testutil.Equal(t, "cached for a year", w.Header().Get("Cache-Control"), "public, max-age=31536000, immutable")
+
+	w = h.request(http.MethodGet, "/static/htmx-2.0.11.min.js", nil, nil)
+	testutil.Equal(t, "a file without a version for a day", w.Header().Get("Cache-Control"), "public, max-age=86400")
+}
+
 func TestBrokenLogoIsLeftOut(t *testing.T) {
 	t.Parallel()
 

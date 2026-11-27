@@ -20,7 +20,7 @@ templ Layout(p Page) {
 			if p.Brand.FaviconURL != "" {
 				<link rel="icon" href={ p.Brand.FaviconURL } type={ p.Brand.FaviconType }/>
 			}
-			<link rel="stylesheet" href="/static/app.css"/>
+			<link rel="stylesheet" href={ StylesheetURL() }/>
 			if p.Brand.ThemeURL != "" {
 				<link rel="stylesheet" href={ p.Brand.ThemeURL }/>
 			}

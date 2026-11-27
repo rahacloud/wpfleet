@@ -209,11 +209,17 @@ func securityHeaders(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
-// cacheStatic lets browsers keep the static files for a day; a new htmx is a
-// new file name.
+// cacheStatic lets browsers keep the static files. A request with a version
+// in the query, like the stylesheet's, is kept for a year, since a new file
+// is a new address; htmx carries its version in its file name. Others are
+// kept for a day.
 func cacheStatic(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c *echo.Context) error {
-		c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+		if c.QueryParam("v") != "" {
+			c.Response().Header().Set("Cache-Control", cacheVersioned)
+		} else {
+			c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+		}
 
 		return next(c)
 	}
