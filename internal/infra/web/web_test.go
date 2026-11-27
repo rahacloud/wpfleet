@@ -17,7 +17,6 @@ import (
 	"github.com/rahacloud/wpfleet/internal/infra/gitrepo"
 	"github.com/rahacloud/wpfleet/internal/infra/helm"
 	"github.com/rahacloud/wpfleet/internal/infra/web"
-	"github.com/rahacloud/wpfleet/internal/infra/web/ui"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 	"github.com/rahacloud/wpfleet/internal/ops"
 	"github.com/rahacloud/wpfleet/internal/testutil"
@@ -121,9 +120,8 @@ func newHarnessWith(t *testing.T, change func(*web.Deps)) *harness {
 			return signature == "sha256=good" && string(body) == `{"ref":"refs/heads/main"}`
 		},
 		Now:      func() time.Time { return testNow },
-		Branding: web.Branding{}, //nolint:exhaustruct_v5 // the zero value is wpfleet's own look
+		Branding: web.Branding{SupportEmail: "help@example.com"}, //nolint:exhaustruct_v5 // only support; else wpfleet's look
 		Version:  "v0.0.0-test",
-		Support:  ui.Support{Email: "help@example.com", URL: ""},
 	}
 
 	if change != nil {
@@ -902,6 +900,16 @@ func TestAdminIsRefusedWhileBusy(t *testing.T) {
 	testutil.Equal(t, "status", w.Code, http.StatusConflict)
 	testutil.Equal(t, "logins", len(h.ops.called("AdminLogin")), 0)
 	testutil.Equal(t, "result", h.audit.only(t).Result, audit.ResultBusy)
+
+	// The pages say so before anyone presses the button.
+	const why = "Restore is running on this site. The dashboard opens again when it ends."
+
+	page := h.request(http.MethodGet, "/sites/staging/blog", nil, cookie).Body.String()
+	testutil.Contains(t, "site page", page, why, `aria-describedby="help-login" disabled`)
+
+	home := h.request(http.MethodGet, "/", nil, cookie).Body.String()
+	testutil.Contains(t, "home", home, why, `aria-describedby="blocked-staging-blog"`)
+	testutil.NotContains(t, "the other site's admin is open", home, `aria-describedby="blocked-staging-shop"`)
 }
 
 func TestRestoreNeedsTheSiteName(t *testing.T) {
@@ -913,7 +921,7 @@ func TestRestoreNeedsTheSiteName(t *testing.T) {
 	f := form(csrf, "stamp", "20261126T020000Z", "confirm", siteShop)
 	w := h.request(http.MethodPost, "/sites/staging/blog/restore", f, cookie)
 	testutil.Equal(t, "status", w.Code, http.StatusBadRequest)
-	testutil.Contains(t, "page", w.Body.String(), "nothing was restored")
+	testutil.Contains(t, "page", w.Body.String(), "nothing was restored", `href="/sites/staging/blog/restore"`)
 	testutil.Equal(t, "restores", len(h.ops.called("Restore")), 0)
 	refusal := h.audit.only(t)
 	testutil.Equal(t, "refusal audited", refusal.Result, audit.ResultDenied)
@@ -1080,7 +1088,7 @@ func TestLogout(t *testing.T) {
 
 	w = h.request(http.MethodPost, "/auth/logout", form(csrf), cookie)
 	testutil.Equal(t, "status", w.Code, http.StatusOK)
-	testutil.Contains(t, "page", w.Body.String(), "You have signed out.")
+	testutil.Contains(t, "page", w.Body.String(), "You have signed out.", `href="/auth/signin"`)
 }
 
 func TestNewNeedsItsDependencies(t *testing.T) {

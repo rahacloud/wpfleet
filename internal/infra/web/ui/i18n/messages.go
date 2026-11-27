@@ -316,6 +316,9 @@ const (
 	OpenAdminOf
 	// OpenAdminHelp explains the admin button.
 	OpenAdminHelp
+	// AdminBlocked says why the admin button is off (%s: the action that
+	// runs).
+	AdminBlocked
 	// ViewSiteHelp explains the site link.
 	ViewSiteHelp
 	// BackUpNowHelp explains the backup button.
@@ -545,6 +548,7 @@ var english = [keyCount]string{
 	AskAdmin:            "Ask the person who set up this tool for your team.",
 	OpenAdminOf:         "Open the admin of %s in %s",
 	OpenAdminHelp:       "Sign in to the WordPress dashboard as yourself, without a password.",
+	AdminBlocked:        "%s is running on this site. The dashboard opens again when it ends.",
 	ViewSiteHelp:        "Open the site as visitors see it, in a new tab.",
 	BackUpNowHelp:       "Save a copy of the site's content and uploaded files now.",
 	RestoreBackup:       "Restore a backup",
@@ -735,6 +739,7 @@ var persian = [keyCount]string{
 	AskAdmin:            "از کسی که این ابزار را برای تیم شما راه انداخته است بپرسید.",
 	OpenAdminOf:         "ورود به پیشخوان %s در %s",
 	OpenAdminHelp:       "بدون گذرواژه، با حساب خودتان وارد پیشخوان وردپرس شوید.",
+	AdminBlocked:        "%s روی این سایت در حال اجراست. پس از پایان آن، پیشخوان دوباره باز می‌شود.",
 	ViewSiteHelp:        "سایت را همان‌طور که بازدیدکنندگان می‌بینند در زبانهٔ تازه باز کنید.",
 	BackUpNowHelp:       "همین حالا از محتوا و فایل‌های بارگذاری‌شدهٔ سایت نسخهٔ پشتیبان بگیرید.",
 	RestoreBackup:       "بازگردانی پشتیبان",

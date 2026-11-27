@@ -76,9 +76,17 @@ templ siteActions(l i18n.Lang, s SiteView) {
 			<div class="wf-card wf-stack">
 				<form method="post" action={ templ.SafeURL(ActionPath(s.Env, s.Site, "admin")) } target="_blank" rel="noopener noreferrer">
 					<input type="hidden" name="csrf" value={ s.CSRF }/>
-					<button type="submit" class="wf-btn wf-btn-primary" data-action="login" aria-describedby="help-login">{ l.T(i18n.OpenAdmin) }</button>
+					if s.AdminBlockedBy != "" {
+						<button type="submit" class="wf-btn wf-btn-primary" data-action="login" aria-describedby="help-login" disabled>{ l.T(i18n.OpenAdmin) }</button>
+					} else {
+						<button type="submit" class="wf-btn wf-btn-primary" data-action="login" aria-describedby="help-login">{ l.T(i18n.OpenAdmin) }</button>
+					}
 				</form>
-				<p id="help-login" class="wf-help">{ l.T(i18n.OpenAdminHelp) }</p>
+				if s.AdminBlockedBy != "" {
+					<p id="help-login" class="wf-help">{ l.T(i18n.AdminBlocked, s.AdminBlockedBy.Label(l)) }</p>
+				} else {
+					<p id="help-login" class="wf-help">{ l.T(i18n.OpenAdminHelp) }</p>
+				}
 			</div>
 		}
 		if s.URL != "" {

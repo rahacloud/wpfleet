@@ -55,6 +55,21 @@ func brandHarness(t *testing.T) (*harness, string) {
 	return newHarnessWith(t, func(d *web.Deps) { d.Branding = northwind(dir) }), dir
 }
 
+// The home page greets people with the brand's welcome text, and the
+// pages send them to the brand's support.
+func TestWelcomeAndSupportFromTheBrand(t *testing.T) {
+	t.Parallel()
+
+	h, _ := brandHarness(t)
+	cookie, _ := h.as(editor(), "")
+
+	home := h.request(http.MethodGet, "/", nil, cookie).Body.String()
+	testutil.Contains(t, "welcome", home, `<p class="wf-page-welcome">Open your site&#39;s dashboard from here.</p>`)
+
+	refusal := h.request(http.MethodGet, "/sites/production/blog", nil, cookie).Body.String()
+	testutil.Contains(t, "refusal", refusal, "ask your support team for access", `href="mailto:web-help@example.com"`)
+}
+
 // checkFooter checks the footer that no branding changes.
 func checkFooter(t *testing.T, what, body string) {
 	t.Helper()

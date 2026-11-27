@@ -101,7 +101,7 @@ func (s *Server) callback(c *echo.Context) error {
 
 // signInFailed says the sign-in failed and offers another.
 func (s *Server) signInFailed(c *echo.Context) error {
-	return s.message(c, http.StatusUnauthorized, i18n.SignIn, i18n.SignInFailed, true, "/auth/login", i18n.SignIn)
+	return s.message(c, http.StatusUnauthorized, i18n.SignIn, i18n.SignInFailed, true, signInPath, i18n.SignIn)
 }
 
 // logout ends the session. It is a POST with the CSRF token, so another site
@@ -123,7 +123,7 @@ func (s *Server) logout(c *echo.Context) error {
 		s.authRecord(ctx, actionSignOut, sess.Identity, audit.ResultOK, "")
 	}
 
-	return s.message(c, http.StatusOK, i18n.SignedOutTitle, i18n.SignedOut, false, "/auth/login", i18n.SignIn)
+	return s.message(c, http.StatusOK, i18n.SignedOutTitle, i18n.SignedOut, false, signInPath, i18n.SignIn)
 }
 
 // setLang stores the language a person picked in their session.

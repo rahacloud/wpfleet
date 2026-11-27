@@ -99,7 +99,9 @@ func TestFooterIgnoresBranding(t *testing.T) {
 			},
 		}
 
-		m := ui.Message{Title: "t", Text: "x", Bad: false, Link: "", LinkText: ""}
+		m := ui.Message{
+			Title: "t", Text: "x", Hint: "", Bad: false, Link: "", LinkText: "", Support: ui.Support{Email: "", URL: ""},
+		}
 		err := ui.MessagePage(p, m).Render(t.Context(), &b)
 		testutil.NoError(t, err)
 

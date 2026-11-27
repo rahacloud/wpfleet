@@ -7,6 +7,9 @@ import "github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 templ HomePage(p Page, v HomeView) {
 	@Layout(p) {
 		<h1>{ p.L.T(i18n.HomeTitle) }</h1>
+		if p.Brand.Welcome != "" {
+			<p class="wf-page-welcome">{ p.Brand.Welcome }</p>
+		}
 		if v.Total == 0 {
 			<section class="wf-card wf-stack wf-page-empty">
 				<p>{ p.L.T(i18n.NoSitesYet) }</p>
@@ -100,7 +103,7 @@ templ siteCard(l i18n.Lang, c SiteCard, csrf string) {
 					</span>
 					@healthLabel(l, e.Health)
 					if e.CanLogin {
-						@adminForm(l, e.Env, c.Site, csrf, i == 0)
+						@adminForm(l, e.Env, c.Site, csrf, i == 0, e.AdminBlockedBy)
 					}
 				</li>
 			}
@@ -119,8 +122,10 @@ templ siteCard(l i18n.Lang, c SiteCard, csrf string) {
 }
 
 // adminForm is "Open admin" for one environment: a POST with the CSRF token
-// whose answer redirects a new tab to the one-time link.
-templ adminForm(l i18n.Lang, env, site, csrf string, primary bool) {
+// whose answer redirects a new tab to the one-time link. While an action
+// that refuses a login runs (only a restore), the button is disabled and a
+// line says why.
+templ adminForm(l i18n.Lang, env, site, csrf string, primary bool, blockedBy Action) {
 	<form method="post" action={ templ.SafeURL(ActionPath(env, site, "admin")) } target="_blank" rel="noopener noreferrer">
 		<input type="hidden" name="csrf" value={ csrf }/>
 		<button
@@ -128,7 +133,14 @@ templ adminForm(l i18n.Lang, env, site, csrf string, primary bool) {
 			class={ "wf-btn", templ.KV("wf-btn-primary", primary), templ.KV("wf-btn-secondary", !primary) }
 			data-action="login"
 			aria-label={ newTab(l, l.T(i18n.OpenAdminOf, site, env)) }
+			if blockedBy != "" {
+				disabled
+				aria-describedby={ "blocked-" + env + "-" + site }
+			}
 		>{ l.T(i18n.OpenAdmin) }</button>
+		if blockedBy != "" {
+			<p id={ "blocked-" + env + "-" + site } class="wf-help">{ l.T(i18n.AdminBlocked, blockedBy.Label(l)) }</p>
+		}
 	</form>
 }
 

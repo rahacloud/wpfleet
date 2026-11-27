@@ -420,7 +420,9 @@ func (s *Server) readyz(c *echo.Context) error {
 	return c.String(http.StatusOK, "ok")
 }
 
-// support is whom the pages tell people to ask for help.
+// support is whom the pages tell people to ask for help: the branding's
+// support page and address, the same ones "Need help?" in the header leads
+// to.
 func (s *Server) support() ui.Support {
-	return s.deps.Support
+	return ui.Support{Email: s.deps.Branding.SupportEmail, URL: s.deps.Branding.SupportURL}
 }

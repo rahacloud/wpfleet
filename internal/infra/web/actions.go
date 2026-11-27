@@ -366,7 +366,8 @@ func (s *Server) restore(c *echo.Context) error {
 	if c.FormValue("confirm") != t.site || stamp == "" {
 		s.auditTarget(c.Request().Context(), t, audit.ResultDenied, "the typed confirmation did not match the site's name")
 
-		return s.refuse(c, http.StatusBadRequest, s.lang(c).T(i18n.RestoreMismatch), ui.SitePath(t.env, t.site))
+		// Back to the restore page, to choose and type again.
+		return s.refuse(c, http.StatusBadRequest, s.lang(c).T(i18n.RestoreMismatch), ui.ActionPath(t.env, t.site, "restore"))
 	}
 
 	release, ok, err := s.lock(c, t)

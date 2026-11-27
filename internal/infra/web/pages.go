@@ -156,16 +156,27 @@ func (s *Server) siteView(ctx context.Context, sess session.Session, env, site s
 		}
 	}
 
-	if environment.PromoteFrom != "" && s.allows(sess, environment.PromoteFrom, site, access.View) {
-		plan, err := s.deps.Ops.PlanPromotion(env, site)
-		if err == nil {
-			view.PromoteFrom = environment.PromoteFrom
-			view.FromTag = plan.Target.Tag
-			view.CanPublish = perms.Deploy && plan.Changed()
-		}
-	}
+	s.fillPublish(&view, sess, environment.PromoteFrom)
 
 	return view, nil
+}
+
+// fillPublish adds what "Publish <from> to <env>" needs to the site page,
+// when the environment publishes from one the person may see. A plan that
+// cannot be made leaves the button out.
+func (s *Server) fillPublish(view *ui.SiteView, sess session.Session, from string) {
+	if from == "" || !s.allows(sess, from, view.Site, access.View) {
+		return
+	}
+
+	plan, err := s.deps.Ops.PlanPromotion(view.Env, view.Site)
+	if err != nil {
+		return
+	}
+
+	view.PromoteFrom = from
+	view.FromTag = plan.Target.Tag
+	view.CanPublish = view.Perms.Deploy && plan.Changed()
 }
 
 // adminBlockedBy is the action that would make "Open admin" on site in env
