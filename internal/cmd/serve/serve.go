@@ -28,6 +28,7 @@ import (
 	"github.com/rahacloud/wpfleet/internal/infra/session"
 	"github.com/rahacloud/wpfleet/internal/infra/web"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
+	"github.com/rahacloud/wpfleet/internal/infra/web/ui"
 	"github.com/rahacloud/wpfleet/internal/ops"
 )
 
@@ -181,6 +182,7 @@ func run(ctx context.Context, log *slog.Logger, o options) error {
 		Now:           nil,
 		Branding:      branding(srv.Branding, fleetClone.Dir),
 		Version:       o.version,
+		Support:       ui.Support{Email: "", URL: ""},
 	})
 	if err != nil {
 		return err

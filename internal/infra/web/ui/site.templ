@@ -6,136 +6,254 @@ import (
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 )
 
-// SitePage is one site in one environment: what it runs, the actions the
-// person may start, and, for people with deploy, the release, pods, history
-// and diff.
+// SitePage is one site in one environment: how it is doing, the actions the
+// person may start, each with one line on what it does, its backups, and,
+// for people with deploy, the technical details behind a disclosure.
 templ SitePage(p Page, s SiteView) {
 	@Layout(p) {
-		<h1><span class="ltr">{ s.Site }</span> · <span class="ltr">{ s.Env }</span></h1>
+		<h1>
+			<span dir="ltr">{ s.Site }</span>
+			{ " " }
+			<span class="wf-muted wf-page-env-title">
+				<span dir="ltr">{ s.Env }</span>
+				if s.Live {
+					{ " " }
+					<span class="wf-badge">{ p.L.T(i18n.LiveBadge) }</span>
+				}
+			</span>
+		</h1>
 		if s.Running != "" {
-			<p class="message">{ p.L.T(i18n.RunningNow, s.Running.Label(p.L)) }</p>
+			<p class="wf-card wf-page-running" role="status">{ p.L.T(i18n.RunningNow, s.Running.Label(p.L)) }</p>
 		}
-		<section class="card">
-			<dl class="facts">
+		<section class="wf-card wf-stack wf-page-summary">
+			<dl class="wf-page-facts">
+				<dt>{ p.L.T(i18n.StatusLabel) }</dt>
+				<dd>
+					@healthLabel(p.L, s.Health)
+				</dd>
 				<dt>{ p.L.T(i18n.AddressLabel) }</dt>
 				<dd>
-					if s.URL != "" {
-						<a class="ltr" href={ templ.URL(s.URL) } rel="noreferrer noopener" target="_blank">{ s.Host }</a>
+					if s.Host != "" {
+						<span dir="ltr">{ s.Host }</span>
 					} else {
-						<span class="ltr">{ s.Host }</span>
+						<span class="wf-muted">{ p.L.T(i18n.NoAddress) }</span>
 					}
 				</dd>
-				<dt>{ p.L.T(i18n.VersionLabel) }</dt>
-				<dd><span class="ltr">{ tagOrUnknown(p.L, s.Tag) }</span></dd>
-				if s.PromoteFrom != "" && s.FromTag != s.Tag {
-					<dt></dt>
-					<dd class="warn">{ p.L.T(i18n.NewerIn, s.PromoteFrom) }: <span class="ltr">{ tagOrUnknown(p.L, s.FromTag) }</span></dd>
-				}
-				<dt>{ p.L.T(i18n.ReadyLabel) }</dt>
-				<dd><span class="ltr">{ readyOrUnknown(p.L, s.Ready) }</span></dd>
 				<dt>{ p.L.T(i18n.LastBackup) }</dt>
 				<dd>
-					@lastBackup(p.L, s.Backup.Enabled, s.Backup.LastSuccess)
+					<span class={ backupBadge(s.Backup.Enabled, s.Backup.LastSuccess) }>{ backupText(p.L, s.Backup.Enabled, s.Backup.LastSuccess, s.Now) }</span>
 				</dd>
 			</dl>
+			if len(s.Others) > 0 {
+				<nav class="wf-row wf-page-others" aria-label={ p.L.T(i18n.OtherEnvironments) }>
+					<span class="wf-muted">{ p.L.T(i18n.OtherEnvironments) }</span>
+					for _, o := range s.Others {
+						<a href={ templ.SafeURL(SitePath(o.Env, s.Site)) }>
+							<span dir="ltr">{ o.Env }</span>
+							if o.Live {
+								{ " " }
+								<span class="wf-badge">{ p.L.T(i18n.LiveBadge) }</span>
+							}
+						</a>
+					}
+				</nav>
+			}
 		</section>
 		@siteActions(p.L, s)
-		if s.Engineering {
-			@engineering(p.L, s)
-		}
 		<h2>{ p.L.T(i18n.BackupsTitle) }</h2>
-		<div hx-get={ ActionPath(s.Env, s.Site, "backups") } hx-trigger="load" hx-swap="outerHTML" class="loading">{ p.L.T(i18n.Loading) }</div>
+		<div hx-get={ ActionPath(s.Env, s.Site, "backups") } hx-trigger="load" hx-swap="outerHTML" class="wf-muted">{ p.L.T(i18n.Loading) }</div>
+		if s.Engineering {
+			@technical(p.L, s)
+		}
 	}
 }
 
-// siteActions are the buttons the person's permissions allow; the others
-// are not rendered at all.
+// siteActions are the actions the person's permissions allow, each with a
+// line on what it does; the others are not rendered at all.
 templ siteActions(l i18n.Lang, s SiteView) {
-	<div class="actions">
+	<section class="wf-grid wf-page-actions">
 		if s.Perms.Login {
-			<form method="post" action={ templ.SafeURL(ActionPath(s.Env, s.Site, "admin")) } target="_blank" rel="noreferrer noopener">
-				<input type="hidden" name="csrf" value={ s.CSRF }/>
-				<button type="submit" class="primary" data-action="login">{ l.T(i18n.OpenAdmin) }</button>
-			</form>
+			<div class="wf-card wf-stack">
+				<form method="post" action={ templ.SafeURL(ActionPath(s.Env, s.Site, "admin")) } target="_blank" rel="noopener noreferrer">
+					<input type="hidden" name="csrf" value={ s.CSRF }/>
+					<button type="submit" class="wf-btn wf-btn-primary" data-action="login" aria-describedby="help-login">{ l.T(i18n.OpenAdmin) }</button>
+				</form>
+				<p id="help-login" class="wf-help">{ l.T(i18n.OpenAdminHelp) }</p>
+			</div>
+		}
+		if s.URL != "" {
+			<div class="wf-card wf-stack">
+				<a
+					class="wf-btn wf-btn-secondary"
+					href={ templ.URL(s.URL) }
+					target="_blank"
+					rel="noopener noreferrer"
+					aria-label={ newTab(l, l.T(i18n.ViewSite)) }
+					aria-describedby="help-view"
+				>{ l.T(i18n.ViewSite) }</a>
+				<p id="help-view" class="wf-help">{ l.T(i18n.ViewSiteHelp) }</p>
+			</div>
 		}
 		if s.CanPublish {
-			<form method="post" action={ templ.SafeURL(ActionPath(s.Env, s.Site, "promote")) }>
-				<input type="hidden" name="csrf" value={ s.CSRF }/>
-				<button type="submit" data-action="promote">{ l.T(i18n.Publish, s.PromoteFrom, s.Env) }</button>
-			</form>
-		}
-		if s.Perms.Deploy {
-			<form method="post" action={ templ.SafeURL(ActionPath(s.Env, s.Site, "deploy")) }>
-				<input type="hidden" name="csrf" value={ s.CSRF }/>
-				<button type="submit" data-action="deploy">{ l.T(i18n.DeployButton) }</button>
-			</form>
+			<div class="wf-card wf-stack">
+				<form method="post" action={ templ.SafeURL(ActionPath(s.Env, s.Site, "promote")) }>
+					<input type="hidden" name="csrf" value={ s.CSRF }/>
+					<button type="submit" class="wf-btn wf-btn-primary" data-action="promote" aria-describedby="help-publish">{ l.T(i18n.Publish, s.PromoteFrom, s.Env) }</button>
+				</form>
+				<p id="help-publish" class="wf-help">{ l.T(i18n.PublishHelp, s.PromoteFrom, s.Env) }</p>
+			</div>
 		}
 		if s.Perms.Backup {
-			<form method="post" action={ templ.SafeURL(ActionPath(s.Env, s.Site, "backup")) }>
-				<input type="hidden" name="csrf" value={ s.CSRF }/>
-				<button type="submit" data-action="backup">{ l.T(i18n.BackUpNow) }</button>
-			</form>
+			<div class="wf-card wf-stack">
+				<form method="post" action={ templ.SafeURL(ActionPath(s.Env, s.Site, "backup")) }>
+					<input type="hidden" name="csrf" value={ s.CSRF }/>
+					<button type="submit" class="wf-btn wf-btn-secondary" data-action="backup" aria-describedby="help-backup">{ l.T(i18n.BackUpNow) }</button>
+				</form>
+				<p id="help-backup" class="wf-help">{ l.T(i18n.BackUpNowHelp) }</p>
+			</div>
 		}
-	</div>
+		if s.Perms.Restore {
+			<div class="wf-card wf-stack">
+				<a class="wf-btn wf-btn-secondary" href={ templ.SafeURL(ActionPath(s.Env, s.Site, "restore")) } aria-describedby="help-restore">{ l.T(i18n.RestoreBackup) }</a>
+				<p id="help-restore" class="wf-help">{ l.T(i18n.RestoreBackupHelp) }</p>
+			</div>
+		}
+	</section>
 }
 
-// engineering is the part of the site page for people with deploy.
-templ engineering(l i18n.Lang, s SiteView) {
-	<h2>{ l.T(i18n.ReleaseTitle) }</h2>
-	<section class="card">
-		if s.Release == nil {
-			<p class="muted">{ l.T(i18n.NotInstalled) }</p>
-		} else {
-			<dl class="facts">
-				<dt>{ l.T(i18n.RevisionLabel) }</dt>
-				<dd>{ l.Int(s.Release.Revision) } <span class="badge ltr">{ s.Release.Status }</span></dd>
-				<dt>{ l.T(i18n.CommitLabel) }</dt>
-				<dd>
-					if s.Release.Commit != "" {
-						<code>{ s.Release.Commit }</code>
-						if s.Release.Dirty {
-							<span class="warn">{ l.T(i18n.UncommittedChanges) }</span>
-						}
-					} else {
-						<span class="muted">{ l.T(i18n.Unknown) }</span>
-					}
-				</dd>
-				<dt>{ l.T(i18n.UpdatedLabel) }</dt>
-				<dd>{ l.Time(s.Release.Updated) }</dd>
+// technical is the part of the site page for people with deploy, closed
+// until they open it: the release, deploy, pods, the release history, what a
+// deploy would change and the history of the site's file. The diff and the
+// file history load when it opens, so a closed section costs nothing.
+templ technical(l i18n.Lang, s SiteView) {
+	<details class="wf-card wf-page-technical">
+		<summary>{ l.T(i18n.TechnicalDetails) }</summary>
+		<div class="wf-stack">
+			<dl class="wf-page-facts">
 				<dt>{ l.T(i18n.ImageLabel) }</dt>
-				<dd><code class="ltr">{ s.Image }</code></dd>
+				<dd><code dir="ltr">{ s.Image }</code></dd>
+				if s.PromoteFrom != "" && s.FromTag != s.Tag {
+					<dt>{ l.T(i18n.NewerIn, s.PromoteFrom) }</dt>
+					<dd><code dir="ltr">{ tagOrUnknown(l, s.FromTag) }</code></dd>
+				}
+				<dt>{ l.T(i18n.ReadyLabel) }</dt>
+				<dd><span dir="ltr">{ readyOrUnknown(l, s.Ready) }</span></dd>
+				if s.Release == nil {
+					<dt>{ l.T(i18n.ReleaseTitle) }</dt>
+					<dd class="wf-muted">{ l.T(i18n.NotInstalled) }</dd>
+				} else {
+					<dt>{ l.T(i18n.RevisionLabel) }</dt>
+					<dd>{ l.Int(s.Release.Revision) } <span class="wf-badge" dir="ltr">{ s.Release.Status }</span></dd>
+					<dt>{ l.T(i18n.CommitLabel) }</dt>
+					<dd>
+						if s.Release.Commit != "" {
+							<code>{ s.Release.Commit }</code>
+							if s.Release.Dirty {
+								{ " " }
+								<span class="wf-badge wf-badge-warn">{ l.T(i18n.UncommittedChanges) }</span>
+							}
+						} else {
+							<span class="wf-muted">{ l.T(i18n.Unknown) }</span>
+						}
+					</dd>
+					<dt>{ l.T(i18n.UpdatedLabel) }</dt>
+					<dd>{ l.Time(s.Release.Updated) }</dd>
+				}
 				<dt>{ l.T(i18n.VolumeLabel) }</dt>
 				<dd>
-					<code class="ltr">{ s.Volume.Claim }</code>
+					<code dir="ltr">{ s.Volume.Claim }</code>
+					{ " " }
 					if s.Volume.Found {
-						<span class="ltr">{ s.Volume.Phase } { s.Volume.Capacity } { s.Volume.StorageClass }</span>
+						<span dir="ltr">{ s.Volume.Phase } { s.Volume.Capacity } { s.Volume.StorageClass }</span>
 					} else {
-						<span class="warn">{ l.T(i18n.VolumeMissing) }</span>
+						<span class="wf-badge wf-badge-warn">{ l.T(i18n.VolumeMissing) }</span>
 					}
 				</dd>
 			</dl>
-		}
-	</section>
-	<h2>{ l.T(i18n.PodsTitle) }</h2>
-	if len(s.Pods) == 0 {
-		<p class="muted">{ l.T(i18n.NoPods) }</p>
+			<div class="wf-stack">
+				<form method="post" action={ templ.SafeURL(ActionPath(s.Env, s.Site, "deploy")) }>
+					<input type="hidden" name="csrf" value={ s.CSRF }/>
+					<button type="submit" class="wf-btn wf-btn-secondary" data-action="deploy" aria-describedby="help-deploy">{ l.T(i18n.DeployButton) }</button>
+				</form>
+				<p id="help-deploy" class="wf-help">{ l.T(i18n.DeployHelp) }</p>
+			</div>
+			<h3>{ l.T(i18n.ReleasesTitle) }</h3>
+			@releaseTable(l, s.Releases)
+			<h3>{ l.T(i18n.PodsTitle) }</h3>
+			@podTable(l, s.Pods)
+			<h3>{ l.T(i18n.DiffTitle) }</h3>
+			<div hx-get={ ActionPath(s.Env, s.Site, "diff") } hx-trigger="toggle once from:closest details" hx-swap="outerHTML" class="wf-muted">{ l.T(i18n.Loading) }</div>
+			<h3>{ l.T(i18n.HistoryTitle) }</h3>
+			<div hx-get={ ActionPath(s.Env, s.Site, "history") } hx-trigger="toggle once from:closest details" hx-swap="outerHTML" class="wf-muted">{ l.T(i18n.Loading) }</div>
+		</div>
+	</details>
+}
+
+// releaseTable is the site's release history.
+templ releaseTable(l i18n.Lang, rows []ReleaseEntry) {
+	if len(rows) == 0 {
+		<p class="wf-muted">{ l.T(i18n.NoReleases) }</p>
 	} else {
-		<div class="table-wrap">
+		<div class="wf-page-table">
 			<table>
 				<thead>
 					<tr>
-						<th>{ l.T(i18n.PodLabel) }</th>
-						<th>{ l.T(i18n.NodeLabel) }</th>
-						<th>{ l.T(i18n.StateLabel) }</th>
-						<th>{ l.T(i18n.ReadyLabel) }</th>
+						<th scope="col">{ l.T(i18n.RevisionLabel) }</th>
+						<th scope="col">{ l.T(i18n.WhenLabel) }</th>
+						<th scope="col">{ l.T(i18n.StateLabel) }</th>
+						<th scope="col">{ l.T(i18n.CommitLabel) }</th>
+						<th scope="col">{ l.T(i18n.AuthorLabel) }</th>
 					</tr>
 				</thead>
 				<tbody>
-					for _, pod := range s.Pods {
+					for _, r := range rows {
 						<tr>
-							<td><code class="ltr">{ pod.Name }</code></td>
-							<td><span class="ltr">{ pod.Node }</span></td>
-							<td><span class="ltr">{ pod.Phase }</span></td>
+							<td>{ l.Int(r.Revision) }</td>
+							<td>{ l.Time(r.Updated) }</td>
+							<td><span dir="ltr">{ r.Status }</span></td>
+							<td>
+								if r.Commit != "" {
+									<code>{ r.Commit }</code>
+								} else {
+									<span class="wf-muted">{ l.T(i18n.Unknown) }</span>
+								}
+							</td>
+							<td>
+								if r.Author != "" {
+									{ r.Author }
+								} else {
+									<span class="wf-muted">{ l.T(i18n.Unknown) }</span>
+								}
+							</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+		</div>
+	}
+}
+
+// podTable is the site's pods.
+templ podTable(l i18n.Lang, pods []Pod) {
+	if len(pods) == 0 {
+		<p class="wf-muted">{ l.T(i18n.NoPods) }</p>
+	} else {
+		<div class="wf-page-table">
+			<table>
+				<thead>
+					<tr>
+						<th scope="col">{ l.T(i18n.PodLabel) }</th>
+						<th scope="col">{ l.T(i18n.NodeLabel) }</th>
+						<th scope="col">{ l.T(i18n.StateLabel) }</th>
+						<th scope="col">{ l.T(i18n.ReadyLabel) }</th>
+					</tr>
+				</thead>
+				<tbody>
+					for _, pod := range pods {
+						<tr>
+							<td><code dir="ltr">{ pod.Name }</code></td>
+							<td><span dir="ltr">{ pod.Node }</span></td>
+							<td><span dir="ltr">{ pod.Phase }</span></td>
 							<td>{ yesNo(l, pod.Ready) }</td>
 						</tr>
 					}
@@ -143,33 +261,21 @@ templ engineering(l i18n.Lang, s SiteView) {
 			</table>
 		</div>
 	}
-	<h2>{ l.T(i18n.DiffTitle) }</h2>
-	<div hx-get={ ActionPath(s.Env, s.Site, "diff") } hx-trigger="load" hx-swap="outerHTML" class="loading">{ l.T(i18n.Loading) }</div>
-	<h2>{ l.T(i18n.HistoryTitle) }</h2>
-	<div hx-get={ ActionPath(s.Env, s.Site, "history") } hx-trigger="load" hx-swap="outerHTML" class="loading">{ l.T(i18n.Loading) }</div>
 }
 
-// lastBackup says when a backup last succeeded.
-templ lastBackup(l i18n.Lang, enabled bool, last *time.Time) {
-	if !enabled {
-		<span class="muted">{ lastBackupText(l, enabled, last) }</span>
-	} else if last == nil {
-		<span class="warn">{ lastBackupText(l, enabled, last) }</span>
-	} else {
-		<span>{ lastBackupText(l, enabled, last) }</span>
-	}
-}
-
-// DiffFragment is what a deploy would change, loaded into the site page.
+// DiffFragment is what a deploy would change, loaded into the technical
+// details. The badge names the drift in words as well as in color.
 templ DiffFragment(l i18n.Lang, d DiffView) {
 	<div>
 		switch  {
 			case d.Error != "":
-				<p class="bad">{ l.T(i18n.DiffUnavailable, d.Error) }</p>
+				<p><span class="wf-badge wf-badge-bad">{ l.T(i18n.DriftUnknown) }</span> { l.T(i18n.DiffUnavailable, d.Error) }</p>
 			case !d.Installed:
-				<p class="muted">{ l.T(i18n.NotInstalled) }</p>
+				<p><span class="wf-badge">{ l.T(i18n.DriftNotInstalled) }</span> { l.T(i18n.NotInstalled) }</p>
 			case !d.Changed:
-				<p class="ok">{ l.T(i18n.NoDiff) }</p>
+				<p><span class="wf-badge wf-badge-ok">{ l.T(i18n.DriftNone) }</span> { l.T(i18n.NoDiff) }</p>
+			default:
+				<p><span class="wf-badge wf-badge-warn">{ l.T(i18n.DriftChanged) }</span></p>
 		}
 		if d.Diff != "" {
 			<pre>{ d.Diff }</pre>
@@ -181,18 +287,18 @@ templ DiffFragment(l i18n.Lang, d DiffView) {
 templ HistoryFragment(l i18n.Lang, entries []HistoryEntry, failed bool) {
 	<div>
 		if failed {
-			<p class="bad">{ l.T(i18n.HistoryUnavailable) }</p>
+			<p><span class="wf-badge wf-badge-bad">{ l.T(i18n.HistoryUnavailable) }</span></p>
 		} else if len(entries) == 0 {
-			<p class="muted">{ l.T(i18n.NoHistory) }</p>
+			<p class="wf-muted">{ l.T(i18n.NoHistory) }</p>
 		} else {
-			<div class="table-wrap">
+			<div class="wf-page-table">
 				<table>
 					<thead>
 						<tr>
-							<th>{ l.T(i18n.WhenLabel) }</th>
-							<th>{ l.T(i18n.AuthorLabel) }</th>
-							<th>{ l.T(i18n.ChangeLabel) }</th>
-							<th>{ l.T(i18n.CommitLabel) }</th>
+							<th scope="col">{ l.T(i18n.WhenLabel) }</th>
+							<th scope="col">{ l.T(i18n.AuthorLabel) }</th>
+							<th scope="col">{ l.T(i18n.ChangeLabel) }</th>
+							<th scope="col">{ l.T(i18n.CommitLabel) }</th>
 						</tr>
 					</thead>
 					<tbody>
@@ -211,69 +317,41 @@ templ HistoryFragment(l i18n.Lang, entries []HistoryEntry, failed bool) {
 	</div>
 }
 
-// BackupsFragment lists a site's backups, with a restore form on each for
-// people with restore.
+// BackupsFragment lists a site's backups in plain words, loaded into its
+// page. Restoring one is on the restore page.
 templ BackupsFragment(l i18n.Lang, b BackupsView) {
 	<div>
 		if b.Off && len(b.Rows) == 0 {
-			<p class="muted">{ l.T(i18n.BackupsOff) }</p>
+			<p class="wf-muted">{ l.T(i18n.BackupsOff) }</p>
 		} else if b.Failed {
-			<p class="bad">{ l.T(i18n.BackupsUnavailable) }</p>
+			<p><span class="wf-badge wf-badge-bad">{ l.T(i18n.BackupsUnavailable) }</span></p>
 		} else if len(b.Rows) == 0 {
-			<p class="muted">{ l.T(i18n.NoBackups) }</p>
+			<p class="wf-muted">{ l.T(i18n.NoBackups) }</p>
 		} else {
-			<div class="table-wrap">
-				<table>
-					<thead>
-						<tr>
-							<th>{ l.T(i18n.TakenLabel) }</th>
-							<th>{ l.T(i18n.DatabaseLabel) }</th>
-							<th>{ l.T(i18n.ChangedFilesLabel) }</th>
-							<th>{ l.T(i18n.KeptUntilLabel) }</th>
-						</tr>
-					</thead>
-					<tbody>
-						for _, r := range b.Rows {
-							<tr>
-								<td>
-									{ l.Time(r.Taken) }
-									if b.CanRestore && r.HasDump {
-										@restoreForm(l, b, r)
-									}
-								</td>
-								<td>
-									if r.HasDump {
-										{ l.Bytes(r.DumpSize) }
-									} else {
-										<span class="muted">—</span>
-									}
-								</td>
-								<td>{ l.Int(r.ChangedFiles) }</td>
-								<td>{ l.Time(r.Expires) }</td>
-							</tr>
-						}
-					</tbody>
-				</table>
-			</div>
+			if b.Off {
+				<p class="wf-muted">{ l.T(i18n.BackupsOff) }</p>
+			}
+			<ul class="wf-stack wf-page-backups">
+				for _, r := range b.Rows {
+					<li>
+						@backupLine(l, r, b.Now)
+					</li>
+				}
+			</ul>
 		}
 	</div>
 }
 
-// restoreForm restores one backup after the site's name is typed; the
-// server checks the name again.
-templ restoreForm(l i18n.Lang, b BackupsView, r BackupRow) {
-	<details class="restore">
-		<summary>{ l.T(i18n.RestoreButton) }</summary>
-		<form method="post" action={ templ.SafeURL(ActionPath(b.Env, b.Site, "restore")) }>
-			<input type="hidden" name="csrf" value={ b.CSRF }/>
-			<input type="hidden" name="stamp" value={ r.Stamp }/>
-			<label>
-				<input type="checkbox" name="uploads" value="1"/>
-				{ l.T(i18n.RestoreUploads) }
-			</label>
-			<label for={ "confirm-" + r.Stamp }>{ l.T(i18n.RestoreConfirm, b.Site) }</label>
-			<input id={ "confirm-" + r.Stamp } type="text" name="confirm" required autocomplete="off" dir="ltr" pattern={ b.Site }/>
-			<button type="submit" class="danger" data-action="restore">{ l.T(i18n.RestoreButton) }</button>
-		</form>
-	</details>
+// backupLine is one backup in words: when it was taken, how big its copy of
+// the content is, and until when it is kept.
+templ backupLine(l i18n.Lang, r BackupRow, now time.Time) {
+	<span class="wf-page-backup-when">{ l.Day(r.Taken, now) }</span>
+	if r.HasDump {
+		<span class="wf-muted">{ " · " }{ l.T(i18n.DatabaseSize, l.Bytes(r.DumpSize)) }</span>
+	} else {
+		<span class="wf-muted">{ " · " }{ l.T(i18n.NotRestorable) }</span>
+	}
+	if !r.Expires.IsZero() {
+		<span class="wf-muted">{ " · " }{ l.T(i18n.KeptUntil, l.Date(r.Expires)) }</span>
+	}
 }

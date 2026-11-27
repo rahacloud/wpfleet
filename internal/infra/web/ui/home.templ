@@ -1,0 +1,163 @@
+package ui
+
+import "github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
+
+// HomePage is "Your sites": one card per site, each leading with "Open admin"
+// and "View site", and a search box once the list is long.
+templ HomePage(p Page, v HomeView) {
+	@Layout(p) {
+		<h1>{ p.L.T(i18n.HomeTitle) }</h1>
+		if v.Total == 0 {
+			<section class="wf-card wf-stack wf-page-empty">
+				<p>{ p.L.T(i18n.NoSitesYet) }</p>
+				@supportBlock(p.L, v.Support)
+			</section>
+		} else {
+			if v.Searchable() {
+				@siteSearch(p.L, v.Query)
+			}
+			<section id="wf-sites" class="wf-stack" aria-live="polite">
+				if v.Query != "" {
+					<p class="wf-muted">{ p.L.T(i18n.SitesMatching, p.L.Int(len(v.Cards)), p.L.Int(v.Total)) }</p>
+				} else {
+					<p class="wf-muted">{ siteCount(p.L, v.Total) }</p>
+				}
+				if len(v.Cards) == 0 {
+					<div class="wf-card wf-stack">
+						<p>{ p.L.T(i18n.NoMatch, v.Query) }</p>
+						<p><a href="/">{ p.L.T(i18n.ShowAllSites) }</a></p>
+					</div>
+				} else {
+					<div class="wf-grid">
+						for _, card := range v.Cards {
+							@siteCard(p.L, card, v.CSRF)
+						}
+					</div>
+				}
+			</section>
+		}
+	}
+}
+
+// siteSearch filters the cards. It is a plain GET form that works without
+// scripts; with htmx it filters as the person types and keeps the address in
+// step, so a filtered list can be shared.
+templ siteSearch(l i18n.Lang, query string) {
+	<form class="wf-stack wf-page-search" method="get" action="/" role="search">
+		<label for="wf-q">{ l.T(i18n.SearchLabel) }</label>
+		<div class="wf-row">
+			<input
+				id="wf-q"
+				type="search"
+				name="q"
+				value={ query }
+				autocomplete="off"
+				aria-describedby="wf-q-help"
+				hx-get="/"
+				hx-trigger="input changed delay:300ms, search"
+				hx-target="#wf-sites"
+				hx-select="#wf-sites"
+				hx-swap="outerHTML"
+				hx-replace-url="true"
+			/>
+			<button type="submit" class="wf-btn wf-btn-secondary">{ l.T(i18n.SearchButton) }</button>
+		</div>
+		<p id="wf-q-help" class="wf-help">{ l.T(i18n.SearchHint) }</p>
+	</form>
+}
+
+// siteCard is one site: its name and address, a status per environment with
+// "Open admin" where the person may log in, the last backup, and "Publish"
+// when a newer version waits.
+templ siteCard(l i18n.Lang, c SiteCard, csrf string) {
+	<article class="wf-card wf-stack wf-page-site" aria-labelledby={ "site-" + c.Site }>
+		<div class="wf-stack wf-page-site-head">
+			<h2 id={ "site-" + c.Site }>
+				<a href={ templ.SafeURL(SitePath(c.Primary().Env, c.Site)) }><span dir="ltr">{ c.Site }</span></a>
+			</h2>
+			if c.Primary().URL != "" {
+				<p class="wf-row">
+					<a
+						class="wf-page-view"
+						href={ templ.URL(c.Primary().URL) }
+						target="_blank"
+						rel="noopener noreferrer"
+						aria-label={ newTab(l, l.T(i18n.ViewSite)) }
+					>{ l.T(i18n.ViewSite) }</a>
+					<span class="wf-muted" dir="ltr">{ c.Primary().Host }</span>
+				</p>
+			}
+		</div>
+		<ul class="wf-stack wf-page-envs">
+			for i, e := range c.Envs {
+				<li class="wf-row wf-page-env">
+					<span class="wf-page-env-name">
+						<a href={ templ.SafeURL(SitePath(e.Env, c.Site)) }><span dir="ltr">{ e.Env }</span></a>
+						if e.Live {
+							{ " " }
+							<span class="wf-badge">{ l.T(i18n.LiveBadge) }</span>
+						}
+					</span>
+					@healthLabel(l, e.Health)
+					if e.CanLogin {
+						@adminForm(l, e.Env, c.Site, csrf, i == 0)
+					}
+				</li>
+			}
+		</ul>
+		<p class="wf-muted wf-page-backup" hx-get={ ActionPath(c.Primary().Env, c.Site, "status") } hx-trigger="load" hx-swap="outerHTML">{ l.T(i18n.Loading) }</p>
+		if c.Publish != nil {
+			<div class="wf-stack wf-page-publish">
+				<p class="wf-help">{ l.T(i18n.NewerWaiting, c.Publish.From) }</p>
+				<form method="post" action={ templ.SafeURL(ActionPath(c.Publish.To, c.Site, "promote")) }>
+					<input type="hidden" name="csrf" value={ csrf }/>
+					<button type="submit" class="wf-btn wf-btn-primary" data-action="promote">{ l.T(i18n.Publish, c.Publish.From, c.Publish.To) }</button>
+				</form>
+			</div>
+		}
+	</article>
+}
+
+// adminForm is "Open admin" for one environment: a POST with the CSRF token
+// whose answer redirects a new tab to the one-time link.
+templ adminForm(l i18n.Lang, env, site, csrf string, primary bool) {
+	<form method="post" action={ templ.SafeURL(ActionPath(env, site, "admin")) } target="_blank" rel="noopener noreferrer">
+		<input type="hidden" name="csrf" value={ csrf }/>
+		<button
+			type="submit"
+			class={ "wf-btn", templ.KV("wf-btn-primary", primary), templ.KV("wf-btn-secondary", !primary) }
+			data-action="login"
+			aria-label={ newTab(l, l.T(i18n.OpenAdminOf, site, env)) }
+		>{ l.T(i18n.OpenAdmin) }</button>
+	</form>
+}
+
+// healthLabel says how a site is doing in words, with a sign and a color.
+templ healthLabel(l i18n.Lang, h Health) {
+	<span class={ healthBadge(h) }><span aria-hidden="true">{ healthMark(h) }</span> { healthText(l, h) }</span>
+}
+
+// BackupStatusFragment is the last backup of a site, loaded into its card.
+templ BackupStatusFragment(l i18n.Lang, b BackupStatus) {
+	<p class="wf-muted wf-page-backup">
+		<span class={ backupBadge(b.Enabled, b.Last) }>{ backupText(l, b.Enabled, b.Last, b.Now) }</span>
+	</p>
+}
+
+// supportBlock says whom to ask for help: the configured support contact,
+// else the person who set up the tool.
+templ supportBlock(l i18n.Lang, s Support) {
+	<p class="wf-help wf-page-support">
+		{ l.T(i18n.NeedHelp) }
+		{ " " }
+		if s.Link() != "" {
+			<a href={ templ.URL(s.Link()) }>{ l.T(i18n.ContactSupport) }</a>
+			if s.Email != "" && s.URL != "" {
+				{ " · " }
+				<a href={ templ.URL("mailto:" + s.Email) } dir="ltr">{ s.Email }</a>
+			}
+		} else {
+			{ l.T(i18n.AskAdmin) }
+		}
+	</p>
+}

@@ -698,3 +698,161 @@ details.restore form {
     border: 1px solid ButtonText;
   }
 }
+
+/*
+ * Page-specific rules (wf-page-*). They build on the shared wf-* utilities
+ * and use only the --wf-* tokens, so a brand's colors and radius reach them.
+ */
+
+.wf-page-site h2 {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.wf-page-site h2 a {
+  color: var(--wf-text);
+  text-decoration: none;
+}
+
+.wf-page-site h2 a:hover,
+.wf-page-site h2 a:focus-visible {
+  text-decoration: underline;
+}
+
+.wf-page-envs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wf-page-env {
+  justify-content: space-between;
+  padding-block: 0.35rem;
+  border-block-start: 1px solid color-mix(in srgb, var(--wf-muted) 25%, transparent);
+}
+
+.wf-page-env form {
+  margin: 0;
+}
+
+.wf-page-env-name {
+  flex: 1 1 8rem;
+}
+
+.wf-page-publish {
+  padding: 0.75rem;
+  border-radius: var(--wf-radius);
+  background: color-mix(in srgb, var(--wf-primary) 8%, var(--wf-surface));
+}
+
+.wf-page-publish form {
+  margin: 0;
+}
+
+.wf-page-search input[type="search"] {
+  flex: 1 1 16rem;
+  min-width: 0;
+  font: inherit;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--wf-muted) 50%, transparent);
+  border-radius: var(--wf-radius);
+  background: var(--wf-surface);
+  color: var(--wf-text);
+}
+
+.wf-page-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 1.5rem;
+  margin: 0;
+}
+
+.wf-page-facts dt {
+  color: var(--wf-muted);
+}
+
+.wf-page-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wf-page-env-title {
+  font-size: 1rem;
+  font-weight: 400;
+}
+
+.wf-page-actions form {
+  margin: 0;
+}
+
+.wf-page-actions .wf-card {
+  justify-content: space-between;
+}
+
+.wf-page-technical summary,
+.wf-page-log summary,
+.wf-page-result summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.wf-page-technical[open] summary {
+  margin-block-end: 0.75rem;
+}
+
+.wf-page-table {
+  overflow-x: auto;
+}
+
+.wf-page-table table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.wf-page-table th,
+.wf-page-table td {
+  text-align: start;
+  padding: 0.4rem 0.6rem;
+  border-block-end: 1px solid color-mix(in srgb, var(--wf-muted) 25%, transparent);
+  vertical-align: top;
+}
+
+.wf-page-backups,
+.wf-page-steps {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+}
+
+.wf-page-restore fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.wf-page-restore legend {
+  font-weight: 600;
+  margin-block-end: 0.5rem;
+}
+
+.wf-page-restore input[type="text"] {
+  font: inherit;
+  max-width: 20rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--wf-muted) 50%, transparent);
+  border-radius: var(--wf-radius);
+  background: var(--wf-surface);
+  color: var(--wf-text);
+}
+
+.wf-page-log pre {
+  max-height: 24rem;
+  overflow: auto;
+  direction: ltr;
+  text-align: left;
+  white-space: pre-wrap;
+}
+
+.wf-page-running {
+  border-inline-start: 4px solid var(--wf-primary);
+}

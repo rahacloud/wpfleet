@@ -246,6 +246,148 @@ const (
 	// ContactSupport is the link to the fleet's support.
 	ContactSupport
 
+	// JustNow is a time less than a minute ago.
+	JustNow
+	// MinuteAgo is one minute ago (%s: the number).
+	MinuteAgo
+	// MinutesAgo is several minutes ago (%s: the number).
+	MinutesAgo
+	// HourAgo is one hour ago (%s: the number).
+	HourAgo
+	// HoursAgo is several hours ago (%s: the number).
+	HoursAgo
+	// DayAgo is one day ago (%s: the number).
+	DayAgo
+	// DaysAgo is several days ago (%s: the number).
+	DaysAgo
+	// TodayAt is a time today (%s: the clock).
+	TodayAt
+	// YesterdayAt is a time yesterday (%s: the clock).
+	YesterdayAt
+	// DateAt is a time on another day (%s: the date, %s: the clock).
+	DateAt
+	// HomeTitle heads the home page.
+	HomeTitle
+	// SiteCountOne counts one site (%s: the number).
+	SiteCountOne
+	// SiteCountMany counts sites (%s: the number).
+	SiteCountMany
+	// SitesMatching says how many sites match a search (%s: matching, %s:
+	// all).
+	SitesMatching
+	// SearchLabel labels the search box.
+	SearchLabel
+	// SearchHint explains what the search box finds.
+	SearchHint
+	// SearchButton submits the search.
+	SearchButton
+	// ShowAllSites clears the search.
+	ShowAllSites
+	// NoMatch says no site matches the search (%s: the search).
+	NoMatch
+	// ViewSite opens the public site.
+	ViewSite
+	// OpensInNewTab tells a screen reader that a link opens a new tab (%s:
+	// the link's text).
+	OpensInNewTab
+	// StatusOnline says the site answers.
+	StatusOnline
+	// StatusStarting says some of the site's pods are not ready yet.
+	StatusStarting
+	// StatusDown says the site does not run.
+	StatusDown
+	// StatusUnknown says the site's state could not be read.
+	StatusUnknown
+	// LiveBadge marks the environment visitors see.
+	LiveBadge
+	// BackedUpAgo says when the last backup succeeded (%s: how long ago).
+	BackedUpAgo
+	// NotBackedUpYet says no backup succeeded yet.
+	NotBackedUpYet
+	// NewerWaiting says a newer version waits in the previous environment
+	// (%s: that environment).
+	NewerWaiting
+	// NoSitesYet is the home page of a person with no sites.
+	NoSitesYet
+	// AskAdmin says whom to ask when no support contact is configured.
+	AskAdmin
+	// OpenAdminOf names the admin button for a screen reader (%s: site, %s:
+	// environment).
+	OpenAdminOf
+	// OpenAdminHelp explains the admin button.
+	OpenAdminHelp
+	// ViewSiteHelp explains the site link.
+	ViewSiteHelp
+	// BackUpNowHelp explains the backup button.
+	BackUpNowHelp
+	// RestoreBackup leads to the restore page.
+	RestoreBackup
+	// RestoreBackupHelp explains the restore button.
+	RestoreBackupHelp
+	// PublishHelp explains the publish button (%s: from, %s: to).
+	PublishHelp
+	// DeployHelp explains the deploy button.
+	DeployHelp
+	// StatusLabel labels a site's state.
+	StatusLabel
+	// TechnicalDetails heads the engineering part of the site page.
+	TechnicalDetails
+	// ReleasesTitle heads the release history.
+	ReleasesTitle
+	// NoReleases says the site has no releases.
+	NoReleases
+	// OtherEnvironments leads to the site in the other environments.
+	OtherEnvironments
+	// NoAddress says the site has no address.
+	NoAddress
+	// DatabaseSize is the size of a backup's database copy (%s: the size).
+	DatabaseSize
+	// KeptUntil says when a backup is deleted (%s: the date).
+	KeptUntil
+	// NotRestorable marks a backup without a database copy.
+	NotRestorable
+	// RestoreTitle heads the restore page (%s: the site).
+	RestoreTitle
+	// RestoreIntro explains what a restore replaces.
+	RestoreIntro
+	// RestoreWarning says a restore cannot be undone.
+	RestoreWarning
+	// ChooseBackup labels the list of backups to restore.
+	ChooseBackup
+	// RestoreUploadsHelp explains restoring the uploaded files.
+	RestoreUploadsHelp
+	// RestoreConfirmLabel asks for the site's name (%s).
+	RestoreConfirmLabel
+	// RestoreSubmit starts the restore.
+	RestoreSubmit
+	// NoRestorable says there is no backup to restore.
+	NoRestorable
+	// Cancel leads back without doing anything.
+	Cancel
+	// TaskHeadingDeploy heads a deploy's progress (%s: site, %s: env).
+	TaskHeadingDeploy
+	// TaskHeadingPromote heads a publication's progress (%s: site, %s:
+	// env).
+	TaskHeadingPromote
+	// TaskHeadingBackup heads a backup's progress (%s: site, %s: env).
+	TaskHeadingBackup
+	// TaskHeadingRestore heads a restore's progress (%s: site, %s: env).
+	TaskHeadingRestore
+	// TaskWait says the action takes a while and goes on without the page.
+	TaskWait
+	// ProgressTitle heads the steps of an action.
+	ProgressTitle
+	// ShowLog opens the raw log of an action.
+	ShowLog
+	// NextSuccess says what to do after an action succeeded.
+	NextSuccess
+	// NextFailure says what to do after an action failed.
+	NextFailure
+	// AskForAccess says whom to ask for a permission.
+	AskForAccess
+	// GoHome leads back to the home page.
+	GoHome
+
 	// keyCount is the number of messages; it stays last.
 	keyCount
 )
@@ -329,7 +471,7 @@ var english = [keyCount]string{
 	NotFoundTitle:      "Not found",
 	NotFound:           "There is no such page.",
 	ErrorTitle:         "Something went wrong",
-	ServerError:        "The server could not do this. The reason is in its log.",
+	ServerError:        "The server could not do this. Try again in a few minutes.",
 	BadRequest:         "The request was not understood.",
 	SignedOutTitle:     "Signed out",
 	SignedOut:          "You have signed out.",
@@ -369,6 +511,75 @@ var english = [keyCount]string{
 	SignInHint:         "Use the account you sign in to your other work tools with. You do not need a WordPress password.",
 	SignInTrouble:      "Trouble signing in?",
 	ContactSupport:     "Contact support",
+
+	JustNow:             "just now",
+	MinuteAgo:           "%s minute ago",
+	MinutesAgo:          "%s minutes ago",
+	HourAgo:             "%s hour ago",
+	HoursAgo:            "%s hours ago",
+	DayAgo:              "%s day ago",
+	DaysAgo:             "%s days ago",
+	TodayAt:             "Today at %s UTC",
+	YesterdayAt:         "Yesterday at %s UTC",
+	DateAt:              "%s at %s UTC",
+	HomeTitle:           "Your sites",
+	SiteCountOne:        "%s site",
+	SiteCountMany:       "%s sites",
+	SitesMatching:       "%s of %s sites match.",
+	SearchLabel:         "Find a site",
+	SearchHint:          "Type part of a site's name or address.",
+	SearchButton:        "Search",
+	ShowAllSites:        "Show all sites",
+	NoMatch:             "No site matches “%s”.",
+	ViewSite:            "View site",
+	OpensInNewTab:       "%s (opens in a new tab)",
+	StatusOnline:        "Online",
+	StatusStarting:      "Starting",
+	StatusDown:          "Down",
+	StatusUnknown:       "Status unknown",
+	LiveBadge:           "Live",
+	BackedUpAgo:         "Backed up %s",
+	NotBackedUpYet:      "Not backed up yet",
+	NewerWaiting:        "A newer version is waiting in %s.",
+	NoSitesYet:          "There are no sites for you here yet.",
+	AskAdmin:            "Ask the person who set up this tool for your team.",
+	OpenAdminOf:         "Open the admin of %s in %s",
+	OpenAdminHelp:       "Sign in to the WordPress dashboard as yourself, without a password.",
+	ViewSiteHelp:        "Open the site as visitors see it, in a new tab.",
+	BackUpNowHelp:       "Save a copy of the site's content and uploaded files now.",
+	RestoreBackup:       "Restore a backup",
+	RestoreBackupHelp:   "Put the site's content back as it was in an earlier backup.",
+	PublishHelp:         "Put the version that %s shows now on %s.",
+	DeployHelp:          "Deploy the settings the repository holds now, without changing the version.",
+	StatusLabel:         "Status",
+	TechnicalDetails:    "Technical details",
+	ReleasesTitle:       "Releases",
+	NoReleases:          "No releases yet.",
+	OtherEnvironments:   "This site elsewhere:",
+	NoAddress:           "This site has no address yet.",
+	DatabaseSize:        "content %s",
+	KeptUntil:           "kept until %s",
+	NotRestorable:       "no copy of the content; it cannot be restored",
+	RestoreTitle:        "Restore a backup of %s",
+	RestoreIntro:        "Restoring replaces the site's content and settings (posts, pages, users and plugin settings) with the copy in the backup you choose. Everything changed since that backup is lost.",
+	RestoreWarning:      "This cannot be undone. If you may want today's content back, take a backup first.",
+	ChooseBackup:        "Choose a backup",
+	RestoreUploadsHelp:  "Images and documents changed or deleted since the backup are put back as they were; files uploaded after it stay.",
+	RestoreConfirmLabel: "To confirm, type the site's name: %s",
+	RestoreSubmit:       "Restore the site",
+	NoRestorable:        "There is no backup to restore yet.",
+	Cancel:              "Cancel",
+	TaskHeadingDeploy:   "Deploying %s in %s",
+	TaskHeadingPromote:  "Publishing %s to %s",
+	TaskHeadingBackup:   "Backing up %s in %s",
+	TaskHeadingRestore:  "Restoring %s in %s",
+	TaskWait:            "This can take a few minutes. You may leave this page; the work goes on.",
+	ProgressTitle:       "Progress",
+	ShowLog:             "Show the technical log",
+	NextSuccess:         "Check the site to see the result.",
+	NextFailure:         "Try again in a few minutes. If it fails again, send the address of this page to your support team.",
+	AskForAccess:        "If you need to do this, ask your support team for access.",
+	GoHome:              "Back to your sites",
 }
 
 // persian is the Persian catalogue.
@@ -450,7 +661,7 @@ var persian = [keyCount]string{
 	NotFoundTitle:      "پیدا نشد",
 	NotFound:           "چنین صفحه‌ای نیست.",
 	ErrorTitle:         "مشکلی پیش آمد",
-	ServerError:        "سرور نتوانست این کار را انجام دهد. علت در گزارش آن است.",
+	ServerError:        "سرور نتوانست این کار را انجام دهد. چند دقیقهٔ دیگر دوباره تلاش کنید.",
 	BadRequest:         "درخواست فهمیده نشد.",
 	SignedOutTitle:     "خارج شدید",
 	SignedOut:          "از حساب خود خارج شدید.",
@@ -490,4 +701,73 @@ var persian = [keyCount]string{
 	SignInHint:         "از همان حسابی استفاده کنید که با آن به دیگر ابزارهای کاری وارد می‌شوید. به رمز وردپرس نیازی ندارید.",
 	SignInTrouble:      "در ورود مشکل دارید؟",
 	ContactSupport:     "تماس با پشتیبانی",
+
+	JustNow:             "همین حالا",
+	MinuteAgo:           "%s دقیقه پیش",
+	MinutesAgo:          "%s دقیقه پیش",
+	HourAgo:             "%s ساعت پیش",
+	HoursAgo:            "%s ساعت پیش",
+	DayAgo:              "%s روز پیش",
+	DaysAgo:             "%s روز پیش",
+	TodayAt:             "امروز ساعت %s (UTC)",
+	YesterdayAt:         "دیروز ساعت %s (UTC)",
+	DateAt:              "%s ساعت %s (UTC)",
+	HomeTitle:           "سایت‌های شما",
+	SiteCountOne:        "%s سایت",
+	SiteCountMany:       "%s سایت",
+	SitesMatching:       "%s سایت از %s سایت پیدا شد.",
+	SearchLabel:         "جست‌وجوی سایت",
+	SearchHint:          "بخشی از نام یا نشانی سایت را بنویسید.",
+	SearchButton:        "جست‌وجو",
+	ShowAllSites:        "نمایش همهٔ سایت‌ها",
+	NoMatch:             "هیچ سایتی با «%s» پیدا نشد.",
+	ViewSite:            "دیدن سایت",
+	OpensInNewTab:       "%s (در زبانهٔ تازه باز می‌شود)",
+	StatusOnline:        "در دسترس",
+	StatusStarting:      "در حال راه‌اندازی",
+	StatusDown:          "از کار افتاده",
+	StatusUnknown:       "وضعیت نامعلوم",
+	LiveBadge:           "نسخهٔ اصلی",
+	BackedUpAgo:         "پشتیبان‌گیری %s",
+	NotBackedUpYet:      "هنوز پشتیبانی گرفته نشده",
+	NewerWaiting:        "نسخهٔ تازه‌تری در %s آماده است.",
+	NoSitesYet:          "هنوز سایتی برای شما اینجا نیست.",
+	AskAdmin:            "از کسی که این ابزار را برای تیم شما راه انداخته است بپرسید.",
+	OpenAdminOf:         "ورود به پیشخوان %s در %s",
+	OpenAdminHelp:       "بدون گذرواژه، با حساب خودتان وارد پیشخوان وردپرس شوید.",
+	ViewSiteHelp:        "سایت را همان‌طور که بازدیدکنندگان می‌بینند در زبانهٔ تازه باز کنید.",
+	BackUpNowHelp:       "همین حالا از محتوا و فایل‌های بارگذاری‌شدهٔ سایت نسخهٔ پشتیبان بگیرید.",
+	RestoreBackup:       "بازگردانی پشتیبان",
+	RestoreBackupHelp:   "محتوای سایت را به حالت یکی از پشتیبان‌های پیشین برگردانید.",
+	PublishHelp:         "نسخه‌ای که اکنون در %s است در %s هم نشان داده شود.",
+	DeployHelp:          "تنظیمات کنونی مخزن بدون تغییر نسخه مستقر شود.",
+	StatusLabel:         "وضعیت",
+	TechnicalDetails:    "جزئیات فنی",
+	ReleasesTitle:       "ریلیزها",
+	NoReleases:          "هنوز ریلیزی نیست.",
+	OtherEnvironments:   "این سایت در جاهای دیگر:",
+	NoAddress:           "این سایت هنوز نشانی ندارد.",
+	DatabaseSize:        "محتوا %s",
+	KeptUntil:           "نگهداری تا %s",
+	NotRestorable:       "نسخه‌ای از محتوا ندارد و بازگردانی نمی‌شود",
+	RestoreTitle:        "بازگردانی پشتیبان %s",
+	RestoreIntro:        "بازگردانی، محتوا و تنظیمات سایت (نوشته‌ها، برگه‌ها، کاربران و تنظیمات افزونه‌ها) را با نسخهٔ پشتیبانی که انتخاب می‌کنید جایگزین می‌کند. هر تغییری پس از آن پشتیبان از دست می‌رود.",
+	RestoreWarning:      "این کار برگشت‌پذیر نیست. اگر ممکن است محتوای امروز را بخواهید، اول پشتیبان بگیرید.",
+	ChooseBackup:        "یک پشتیبان انتخاب کنید",
+	RestoreUploadsHelp:  "تصویرها و سندهایی که پس از پشتیبان تغییر کرده یا پاک شده‌اند به حالت پیشین برمی‌گردند؛ فایل‌هایی که پس از آن بارگذاری شده‌اند می‌مانند.",
+	RestoreConfirmLabel: "برای تأیید، نام سایت را بنویسید: %s",
+	RestoreSubmit:       "بازگردانی سایت",
+	NoRestorable:        "هنوز پشتیبانی برای بازگردانی نیست.",
+	Cancel:              "انصراف",
+	TaskHeadingDeploy:   "استقرار %s در %s",
+	TaskHeadingPromote:  "انتشار %s در %s",
+	TaskHeadingBackup:   "پشتیبان‌گیری از %s در %s",
+	TaskHeadingRestore:  "بازگردانی %s در %s",
+	TaskWait:            "این کار ممکن است چند دقیقه طول بکشد. می‌توانید این صفحه را ببندید؛ کار ادامه پیدا می‌کند.",
+	ProgressTitle:       "پیشرفت کار",
+	ShowLog:             "نمایش گزارش فنی",
+	NextSuccess:         "برای دیدن نتیجه به سایت سر بزنید.",
+	NextFailure:         "چند دقیقهٔ دیگر دوباره تلاش کنید. اگر باز هم ناموفق بود، نشانی این صفحه را برای تیم پشتیبانی بفرستید.",
+	AskForAccess:        "اگر به این کار نیاز دارید، از تیم پشتیبانی دسترسی بخواهید.",
+	GoHome:              "بازگشت به سایت‌های شما",
 }

@@ -17,6 +17,7 @@ import (
 	"github.com/rahacloud/wpfleet/internal/infra/gitrepo"
 	"github.com/rahacloud/wpfleet/internal/infra/helm"
 	"github.com/rahacloud/wpfleet/internal/infra/web"
+	"github.com/rahacloud/wpfleet/internal/infra/web/ui"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 	"github.com/rahacloud/wpfleet/internal/ops"
 	"github.com/rahacloud/wpfleet/internal/testutil"
@@ -31,8 +32,13 @@ const (
 	siteShop        = "shop"
 	groupPlatform   = "platform"
 	tagOld          = "20261120-090000"
+	tagNew          = "20261127-120000"
 	stagingBlogFile = "environments/staging/blog.yaml"
 )
+
+// testNow is the server's clock in the tests, the day after the fake's last
+// backup, so times in words are stable.
+var testNow = time.Date(2026, 11, 27, 12, 0, 0, 0, time.UTC) //nolint:gochecknoglobals // a fixed clock
 
 // editor is of the shop team, who may view and log in to staging.
 func editor() access.Identity {
@@ -111,9 +117,10 @@ func newHarnessWith(t *testing.T, change func(*web.Deps)) *harness {
 		VerifyWebhook: func(body []byte, signature string) bool {
 			return signature == "sha256=good" && string(body) == `{"ref":"refs/heads/main"}`
 		},
-		Now:      nil,
+		Now:      func() time.Time { return testNow },
 		Branding: web.Branding{}, //nolint:exhaustruct_v5 // the zero value is wpfleet's own look
 		Version:  "v0.0.0-test",
+		Support:  ui.Support{Email: "help@example.com", URL: ""},
 	}
 
 	if change != nil {
@@ -300,7 +307,8 @@ func TestButtonsFollowPermissions(t *testing.T) {
 	testutil.Contains(t, "editor page", page, `data-action="login"`, "Open admin", "blog.staging.example.com")
 
 	hidden := []string{
-		`data-action="deploy"`, `data-action="promote"`, `data-action="backup"`, "Publish ", "Release", "/diff", "/history",
+		`data-action="deploy"`, `data-action="promote"`, `data-action="backup"`, "Publish ", "Technical details",
+		"/diff", "/history", "/restore", "01234567",
 	}
 	for _, hidden := range hidden {
 		testutil.NotContains(t, "editor page", page, hidden)
@@ -311,7 +319,8 @@ func TestButtonsFollowPermissions(t *testing.T) {
 
 	testutil.Contains(t, "platform page", page,
 		`data-action="login"`, `data-action="deploy"`, `data-action="backup"`, `data-action="promote"`,
-		"Publish development to staging", "Release", "01234567", "/sites/staging/blog/diff")
+		"Publish development to staging", "Technical details", "01234567", "/sites/staging/blog/diff",
+		"/sites/staging/blog/restore", "Sign in to the WordPress dashboard as yourself")
 }
 
 func TestRestoreFormNeedsRestore(t *testing.T) {
@@ -328,13 +337,24 @@ func TestRestoreFormNeedsRestore(t *testing.T) {
 
 	cookie, _ := h.as(editor(), "")
 	fragment := h.request(http.MethodGet, "/sites/staging/blog/backups", nil, cookie).Body.String()
-	testutil.Contains(t, "editor backups", fragment, "2026-11-26 02:00 UTC", "2.0 KiB")
+	testutil.Contains(t, "editor backups", fragment, "Yesterday at 02:00 UTC", "2.0 KiB", "kept until 10 Dec 2026")
 	testutil.NotContains(t, "editor backups", fragment, `data-action="restore"`)
 
+	w := h.request(http.MethodGet, "/sites/staging/blog/restore", nil, cookie)
+	testutil.Equal(t, "editor restore page", w.Code, http.StatusForbidden)
+
 	cookie, _ = h.as(platform(), "")
-	fragment = h.request(http.MethodGet, "/sites/staging/blog/backups", nil, cookie).Body.String()
-	testutil.Contains(t, "platform backups", fragment,
-		`data-action="restore"`, `name="stamp" value="20261126T020000Z"`, `pattern="blog"`)
+	page := h.request(http.MethodGet, "/sites/staging/blog/restore", nil, cookie).Body.String()
+	testutil.Contains(t, "platform restore page", page,
+		"content and settings (posts, pages, users and plugin settings)", "This cannot be undone.",
+		`data-action="restore"`, `name="stamp" value="20261126T020000Z"`, `pattern="blog"`,
+		`<label for="restore-confirm">To confirm, type the site&#39;s name: blog</label>`, "Yesterday at 02:00 UTC")
+
+	// A backup without a database copy cannot be chosen.
+	h.ops.backups[0].HasDump = false
+	page = h.request(http.MethodGet, "/sites/staging/blog/restore", nil, cookie).Body.String()
+	testutil.Contains(t, "nothing to restore", page, "There is no backup to restore yet.")
+	testutil.NotContains(t, "nothing to restore", page, `data-action="restore"`)
 }
 
 // A site whose backups are off has nothing to list, and a bucket the server
@@ -361,7 +381,7 @@ func TestBackupsOff(t *testing.T) {
 
 	h.ops.backups = []ops.BackupRow{{Stamp: stamp, DumpSize: 2048, HasDump: true, ChangedFiles: 0, Expires: time.Time{}}}
 	fragment = h.request(http.MethodGet, "/sites/staging/blog/backups", nil, cookie).Body.String()
-	testutil.Contains(t, "backups taken before", fragment, "2026-11-26 02:00 UTC")
+	testutil.Contains(t, "backups taken before", fragment, "Yesterday at 02:00 UTC")
 
 	// With backups on, a bucket that cannot be read is a failure.
 	h.ops.backupsOff = false
@@ -380,7 +400,8 @@ func TestRefusalIsAudited(t *testing.T) {
 		f := form(csrf, "confirm", siteBlog, "stamp", "latest")
 		w := h.request(http.MethodPost, "/sites/staging/blog/"+action, f, cookie)
 		testutil.Equal(t, action+" status", w.Code, http.StatusForbidden)
-		testutil.Contains(t, action+" page", w.Body.String(), "You are not allowed to do this.")
+		testutil.Contains(t, action+" page", w.Body.String(), "You are not allowed to do this.",
+			"ask your support team for access", `href="mailto:help@example.com"`)
 	}
 
 	records := h.audit.all()
@@ -432,7 +453,8 @@ func TestPersianIsRightToLeft(t *testing.T) {
 	cookie, _ := h.as(editor(), "")
 	page := h.request(http.MethodGet, "/sites/staging/blog", nil, cookie, "Accept-Language", "fa-IR,fa;q=0.9").
 		Body.String()
-	testutil.Contains(t, "browser in Persian", page, `lang="fa"`, `dir="rtl"`, "ورود به پیشخوان", "۲۰۲۶-۱۱-۲۶ ۰۲:۰۰ UTC")
+	testutil.Contains(t, "browser in Persian", page,
+		`lang="fa"`, `dir="rtl"`, "ورود به پیشخوان", i18n.Persian.T(i18n.BackedUpAgo, "۱ روز پیش"))
 
 	cookie, _ = h.as(editor(), "fa")
 	page = h.request(http.MethodGet, "/sites/staging/blog", nil, cookie, "Accept-Language", "en-US").Body.String()
@@ -457,25 +479,93 @@ func TestLanguageSwitchIsStored(t *testing.T) {
 	testutil.Contains(t, "page", page, `dir="rtl"`)
 }
 
-func TestFleetGrid(t *testing.T) {
+// The home page is a card per site with its environments live first, plain
+// statuses and "Open admin"; image tags, commits and drift are not on it.
+func TestHomeCards(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
 
 	cookie, _ := h.as(platform(), "")
 	page := h.request(http.MethodGet, "/", nil, cookie).Body.String()
-	testutil.Contains(t, "platform grid", page,
-		"development", "staging", "production", "20261127-120000", "Another version in development",
-		"/sites/production/blog/status", "Not here")
+	testutil.Contains(t, "platform cards", page,
+		"Your sites", "2 sites", `aria-labelledby="site-blog"`, `href="https://blog.production.example.com"`,
+		"View site", "Online", "Live", `action="/sites/production/blog/admin"`, "Open admin",
+		"A newer version is waiting in development.", `action="/sites/staging/blog/promote"`,
+		"Publish development to staging", `hx-get="/sites/production/blog/status"`)
+
+	for _, hidden := range []string{tagNew, tagOld, "Commit", "Drift", "01234567", `type="search"`} {
+		testutil.NotContains(t, "platform cards", page, hidden)
+	}
+
+	blog := page[strings.Index(page, `id="site-blog"`):strings.Index(page, `id="site-shop"`)]
+	prod := strings.Index(blog, ">production<")
+	staging := strings.Index(blog, ">staging<")
+	dev := strings.Index(blog, ">development<")
+	testutil.True(t, "live first, then back along the chain", prod < staging && staging < dev)
 
 	cookie, _ = h.as(editor(), "")
 	page = h.request(http.MethodGet, "/", nil, cookie).Body.String()
-	testutil.Contains(t, "editor grid", page, "/sites/staging/blog", "/sites/staging/shop")
-	testutil.NotContains(t, "editor grid", page, "/sites/production/blog")
-	testutil.NotContains(t, "editor grid", page, "Another version in development")
+	testutil.Contains(t, "editor cards", page,
+		`action="/sites/staging/blog/admin"`, `action="/sites/staging/shop/admin"`, "Open admin", "Online")
+	testutil.NotContains(t, "editor cards", page, "/sites/production/blog")
+	testutil.NotContains(t, "editor cards", page, "/sites/development/")
+	testutil.NotContains(t, "editor cards", page, "Publish")
+	testutil.NotContains(t, "editor cards", page, `data-action="promote"`)
 
 	calls := h.ops.called("ListSites")
 	testutil.DeepEqual(t, "listed only staging for the editor", calls[len(calls)-1].args, []string{"staging"})
+
+	// Without a promoteFrom chain the UI cannot tell which environment
+	// visitors see, so none is marked live.
+	h.ops.envs = []web.Environment{{Name: envDev, PromoteFrom: ""}, {Name: envStaging, PromoteFrom: ""}}
+	cookie, _ = h.as(platform(), "")
+	page = h.request(http.MethodGet, "/", nil, cookie).Body.String()
+	testutil.NotContains(t, "no chain", page, ">Live<")
+	testutil.Contains(t, "no chain", page, `action="/sites/development/blog/admin"`)
+}
+
+// More than a handful of sites get a search box, and ?q= filters the cards
+// by name or address.
+func TestHomeSearch(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.ops.sites[envStaging] = []string{"about", "blog", "careers", "docs", "events", "news", "shop", "store"}
+	cookie, _ := h.as(editor(), "")
+
+	page := h.request(http.MethodGet, "/", nil, cookie).Body.String()
+	testutil.Contains(t, "search box", page,
+		`<label for="wf-q">Find a site</label>`, `type="search"`, `hx-get="/"`, `hx-select="#wf-sites"`, "8 sites")
+
+	page = h.request(http.MethodGet, "/?q=SHO", nil, cookie).Body.String()
+	testutil.Contains(t, "by name", page, "1 of 8 sites match.", `id="site-shop"`, `value="SHO"`)
+	testutil.NotContains(t, "by name", page, `id="site-store"`)
+
+	page = h.request(http.MethodGet, "/?q=store.staging", nil, cookie).Body.String()
+	testutil.Contains(t, "by address", page, `id="site-store"`)
+	testutil.NotContains(t, "by address", page, `id="site-shop"`)
+
+	page = h.request(http.MethodGet, "/?q=nothing-like-it", nil, cookie).Body.String()
+	testutil.Contains(t, "no match", page, "No site matches “nothing-like-it”.", "Show all sites")
+
+	h.ops.sites[envStaging] = []string{siteBlog, siteShop}
+	page = h.request(http.MethodGet, "/", nil, cookie).Body.String()
+	testutil.NotContains(t, "a short list", page, `type="search"`)
+}
+
+// A fleet without sites says so and whom to ask.
+func TestHomeEmpty(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.ops.sites = map[string][]string{}
+	cookie, _ := h.as(editor(), "")
+
+	w := h.request(http.MethodGet, "/", nil, cookie)
+	testutil.Equal(t, "status", w.Code, http.StatusOK)
+	testutil.Contains(t, "page", w.Body.String(),
+		"There are no sites for you here yet.", "Need help?", `href="mailto:help@example.com"`, "Contact support")
 }
 
 func TestNoAccess(t *testing.T) {
@@ -496,23 +586,24 @@ func TestNoAccess(t *testing.T) {
 	testutil.Equal(t, "a refusal before existence", w.Code, http.StatusForbidden)
 }
 
+// A card loads the site's last backup in words after the page.
 func TestStatusFragment(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	h.ops.diff.Changed = true
 
-	cookie, _ := h.as(platform(), "")
+	cookie, _ := h.as(editor(), "")
 	fragment := h.request(http.MethodGet, "/sites/staging/blog/status", nil, cookie).Body.String()
-	testutil.Contains(t, "platform", fragment, "01234567", "Differs from Git", "2026-11-26 02:00 UTC")
-	// A label and the value a component renders are apart, as "Drift: x".
-	testutil.Contains(t, "spaces after the labels", fragment, "Drift: <span", "Last backup: ")
-
-	cookie, _ = h.as(editor(), "")
-	fragment = h.request(http.MethodGet, "/sites/staging/blog/status", nil, cookie).Body.String()
-	testutil.Contains(t, "editor", fragment, "Last backup")
+	testutil.Contains(t, "editor", fragment, "Backed up 1 day ago")
 	testutil.NotContains(t, "editor", fragment, "Commit")
-	testutil.NotContains(t, "editor", fragment, "Drift")
+
+	cookie, _ = h.as(platform(), "fa")
+	fragment = h.request(http.MethodGet, "/sites/staging/blog/status", nil, cookie).Body.String()
+	testutil.Contains(t, "Persian", fragment, i18n.Persian.T(i18n.BackedUpAgo, "۱ روز پیش"))
+
+	cookie, _ = h.as(stranger(), "")
+	w := h.request(http.MethodGet, "/sites/staging/blog/status", nil, cookie)
+	testutil.Equal(t, "stranger", w.Code, http.StatusForbidden)
 }
 
 func TestDeployStreamsProgressAndAudits(t *testing.T) {
@@ -528,13 +619,15 @@ func TestDeployStreamsProgressAndAudits(t *testing.T) {
 	testutil.True(t, "a task page", strings.HasPrefix(task, "/tasks/"))
 
 	page := h.request(http.MethodGet, task, nil, cookie).Body.String()
-	testutil.Contains(t, "task page", page, `sse-connect="/events?task=`, "Deploy: blog in staging")
+	testutil.Contains(t, "task page", page, `sse-connect="/events?task=`, "Deploying blog in staging",
+		"You may leave this page", "Show the technical log", `sse-swap="log"`)
 
 	events := h.events(task, cookie)
 	testutil.Equal(t, "content type", events.Header().Get("Content-Type"), "text/event-stream")
 	testutil.Contains(t, "events", events.Body.String(),
-		"event: line\ndata: <span>Reading the latest settings from Git…\n",
-		"Deploying blog in staging…", "event: done", "Deployed revision 4 (deployed).")
+		"event: line\ndata: <li>Reading the latest settings from Git…</li>\n",
+		"Deploying blog in staging…", "event: done", "Deployed revision 4 (deployed).",
+		"Check the site to see the result.", `href="/sites/staging/blog"`)
 
 	h.wait()
 
@@ -561,8 +654,8 @@ func TestFailedDeployIsAuditedAsFailed(t *testing.T) {
 	w := h.request(http.MethodPost, "/sites/staging/blog/deploy", form(csrf), cookie)
 	events := h.events(w.Header().Get("Location"), cookie)
 	testutil.Contains(t, "events", events.Body.String(),
-		"Deploying the site failed. Details: the deploy failed: timed out waiting for the condition",
-		`class="message bad"`)
+		"Deploying the site failed.", "Details: the deploy failed: timed out waiting for the condition",
+		`wf-badge-bad`, "Try again in a few minutes.", `href="mailto:help@example.com"`)
 
 	h.wait()
 
@@ -585,12 +678,13 @@ func TestFailureDetailIsForDeployOnly(t *testing.T) {
 	h.wait()
 
 	testutil.Contains(t, "platform", h.events(task, cookie).Body.String(),
-		"The backup failed. Details: "+errFake.Error())
+		"The backup failed.", "Details: "+errFake.Error())
 
 	editorCookie, _ := h.as(editor(), "fa")
 	body := h.events(task, editorCookie).Body.String()
 	testutil.Contains(t, "editor", body, i18n.Persian.T(i18n.FailedBackup))
 	testutil.NotContains(t, "editor", body, errFake.Error())
+	testutil.NotContains(t, "editor", body, i18n.Persian.T(i18n.TechnicalDetails))
 
 	testutil.Contains(t, "audit", h.audit.finished(t).Detail, errFake.Error())
 }
@@ -609,8 +703,18 @@ func TestPersianNumbers(t *testing.T) {
 	page := h.request(http.MethodGet, "/sites/staging/blog", nil, cookie).Body.String()
 	testutil.Contains(t, "site page", page, "۱/۱")
 
-	fleet := h.request(http.MethodGet, "/", nil, cookie).Body.String()
-	testutil.Contains(t, "fleet", fleet, "۱/۱")
+	home := h.request(http.MethodGet, "/", nil, cookie).Body.String()
+	testutil.Contains(t, "home", home, `dir="rtl"`, "۲ سایت", "در دسترس")
+
+	stamp, err := backup.ParseStamp("20261126T020000Z")
+	testutil.NoError(t, err)
+
+	h.ops.backups = []ops.BackupRow{{
+		Stamp: stamp, DumpSize: 2048, HasDump: true, ChangedFiles: 0,
+		Expires: time.Date(2026, 12, 10, 2, 0, 0, 0, time.UTC),
+	}}
+	backups := h.request(http.MethodGet, "/sites/staging/blog/backups", nil, cookie).Body.String()
+	testutil.Contains(t, "backups", backups, "دیروز ساعت ۰۲:۰۰ (UTC)", "۲٫۰ KiB", "۱۹ آذر ۱۴۰۵")
 }
 
 func TestBusySiteIsRefused(t *testing.T) {

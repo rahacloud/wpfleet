@@ -102,15 +102,3 @@ templ footer(p Page) {
 		</p>
 	</footer>
 }
-
-// MessagePage says one thing: a refusal, an error, or that the person
-// signed out.
-templ MessagePage(p Page, m Message) {
-	@Layout(p) {
-		<h1>{ m.Title }</h1>
-		<p class={ "message", templ.KV("bad", m.Bad) }>{ m.Text }</p>
-		if m.Link != "" {
-			<p><a href={ templ.SafeURL(m.Link) }>{ m.LinkText }</a></p>
-		}
-	}
-}
