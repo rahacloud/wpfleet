@@ -77,16 +77,44 @@ func in(l i18n.Lang, args []msgArg) []string {
 	return out
 }
 
-// taskEvent is one step of a task. A line and the result are kept as a
-// message key with its arguments, so each viewer reads them in their own
-// language; a log chunk is kept as it came, and so is a failure's error,
-// which only people with deploy see.
-type taskEvent struct {
-	kind string
+// message is a catalogue message with its arguments, kept so each viewer
+// reads it in their own language.
+type message struct {
 	key  i18n.Key
 	args []msgArg
-	text string
-	ok   bool
+}
+
+// say is a message of key with names as its arguments.
+func say(key i18n.Key, args ...msgArg) message {
+	return message{key: key, args: args}
+}
+
+// in writes the message in l.
+func (m message) in(l i18n.Lang) string {
+	return l.T(m.key, in(l, m.args)...)
+}
+
+// taskEvent is one step of a task. A line and the result are kept as
+// messages: plain for everyone, and, when the step has engineering words
+// (a Job's name, a commit, a revision), eng for people with deploy. A log
+// chunk is kept as it came, and so is a failure's error, which only people
+// with deploy see.
+type taskEvent struct {
+	kind  string
+	plain message
+	eng   *message
+	text  string
+	ok    bool
+}
+
+// say is the event's message for the viewer: the engineering one for
+// people with deploy when there is one, else the plain one.
+func (e taskEvent) say(l i18n.Lang, engineering bool) string {
+	if engineering && e.eng != nil {
+		return e.eng.in(l)
+	}
+
+	return e.plain.in(l)
 }
 
 // render is the event's HTML in l. The result leads back to the site at
@@ -99,14 +127,14 @@ func (e taskEvent) render(l i18n.Lang, engineering bool, back string, support ui
 	case eventLog:
 		return ui.TaskText(e.text)
 	case eventDone:
-		o := ui.TaskOutcome{OK: e.ok, Text: l.T(e.key, in(l, e.args)...), Detail: "", Back: back, Support: support}
+		o := ui.TaskOutcome{OK: e.ok, Text: e.say(l, engineering), Detail: "", Back: back, Support: support}
 		if !e.ok && engineering {
 			o.Detail = e.text
 		}
 
 		return ui.TaskResult(l, o)
 	default:
-		return ui.TaskStep(l.T(e.key, in(l, e.args)...))
+		return ui.TaskStep(e.say(l, engineering))
 	}
 }
 
@@ -155,23 +183,30 @@ func (t *task) since(i int) ([]taskEvent, bool, <-chan struct{}) {
 	return t.events[min(i, len(t.events)):], t.done, t.changed
 }
 
-// line appends a line from the catalogue.
-func (t *task) line(key i18n.Key, args ...string) {
-	t.add(taskEvent{kind: eventLine, key: key, args: names(args...), text: "", ok: false})
+// lineFor appends a line in plain words, which people with deploy read in
+// engineering words instead.
+func (t *task) lineFor(plain, eng message) {
+	t.add(taskEvent{kind: eventLine, plain: plain, eng: &eng, text: "", ok: false})
 }
 
 // progress turns the operations' events into the task's: the deploy and Job
-// lines into catalogue lines, the logs as they are. The operations' own end
-// line is left out; the task writes its result itself.
+// lines into catalogue lines, the logs as they are. A Job's name is only for
+// people with deploy; everyone else reads what the Job does. The
+// operations' own end line is left out; the task writes its result itself.
 func (t *task) progress() ops.Progress {
 	return func(e ops.Event) {
 		switch e.Kind {
 		case ops.EventDeploying:
-			t.line(i18n.Deploying, e.Site, e.Env)
+			t.lineFor(say(i18n.UpdatingSite, names(e.Site, e.Env)...), say(i18n.Deploying, names(e.Site, e.Env)...))
 		case ops.EventJobStarted:
-			t.line(i18n.JobStarted, e.Job)
+			plain := say(i18n.SavingContent)
+			if t.action == ui.ActionRestore {
+				plain = say(i18n.PuttingContentBack)
+			}
+
+			t.lineFor(plain, say(i18n.JobStarted, names(e.Job)...))
 		case ops.EventLog:
-			t.add(taskEvent{kind: eventLog, key: 0, args: nil, text: e.Text, ok: false})
+			t.add(taskEvent{kind: eventLog, plain: message{key: 0, args: nil}, eng: nil, text: e.Text, ok: false})
 		case ops.EventDone:
 		}
 	}
@@ -230,25 +265,32 @@ func (h *taskHub) get(id string) (*task, bool) {
 }
 
 // outcome is how a task's work ended, for its result line and the audit:
-// on success key and args say it, on failure fail names what failed in the
-// person's words and err, which the audit keeps, says why.
+// on success done says it, with eng in engineering words for people with
+// deploy when set; on failure fail names what failed in the person's words
+// and err, which the audit keeps, says why.
 type outcome struct {
 	err    error
 	fail   i18n.Key
-	key    i18n.Key
-	args   []msgArg
+	done   message
+	eng    *message
 	commit string
 	detail string
 }
 
-// succeeded is an outcome that went well.
-func succeeded(key i18n.Key, args []msgArg, commit, detail string) outcome {
-	return outcome{err: nil, fail: i18n.TaskFailed, key: key, args: args, commit: commit, detail: detail}
+// succeeded is an outcome that went well, said in plain words to everyone.
+func succeeded(done message, commit, detail string) outcome {
+	return outcome{err: nil, fail: i18n.TaskFailed, done: done, eng: nil, commit: commit, detail: detail}
+}
+
+// succeededFor is an outcome that went well, said in plain words, and in
+// engineering words to people with deploy.
+func succeededFor(done, eng message, commit, detail string) outcome {
+	return outcome{err: nil, fail: i18n.TaskFailed, done: done, eng: &eng, commit: commit, detail: detail}
 }
 
 // failed is an outcome that failed at what fail names, because of err.
 func failed(fail i18n.Key, err error, commit, detail string) outcome {
-	return outcome{err: err, fail: fail, key: fail, args: nil, commit: commit, detail: detail}
+	return outcome{err: err, fail: fail, done: say(fail), eng: nil, commit: commit, detail: detail}
 }
 
 // start runs work in the background as a task of the person in sess, under
@@ -283,10 +325,10 @@ func (s *Server) start(
 				key = i18n.FailedStopped
 			}
 
-			t.finish(taskEvent{kind: eventDone, key: key, args: nil, text: out.err.Error(), ok: false}, s.now())
+			t.finish(taskEvent{kind: eventDone, plain: say(key), eng: nil, text: out.err.Error(), ok: false}, s.now())
 		} else {
 			rec.Result = audit.ResultOK
-			t.finish(taskEvent{kind: eventDone, key: out.key, args: out.args, text: "", ok: true}, s.now())
+			t.finish(taskEvent{kind: eventDone, plain: out.done, eng: out.eng, text: "", ok: true}, s.now())
 		}
 
 		s.audit(s.base, rec)

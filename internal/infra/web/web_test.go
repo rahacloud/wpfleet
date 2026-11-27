@@ -648,7 +648,7 @@ func TestDeployStreamsProgressAndAudits(t *testing.T) {
 	testutil.Equal(t, "content type", events.Header().Get("Content-Type"), "text/event-stream")
 	testutil.Contains(t, "events", events.Body.String(),
 		"event: line\ndata: <li>Reading the latest settings from Git…</li>\n",
-		"Deploying blog in staging…", "event: done", "Deployed revision 4 (deployed).",
+		"Deploying blog in staging…", "event: done", "Deployed revision 4.",
 		"Check the site to see the result.", `href="/sites/staging/blog"`)
 
 	h.wait()
@@ -664,6 +664,43 @@ func TestDeployStreamsProgressAndAudits(t *testing.T) {
 
 	_, held := h.locks.Running("staging", "blog")
 	testutil.Equal(t, "lock released", held, false)
+}
+
+// People without deploy read the steps of an action in plain words: what a
+// Job does rather than its name, and that the site is published and updated
+// rather than the commit and the revision.
+func TestStepsArePlainWithoutDeploy(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	cookie, csrf := h.as(platform(), "")
+	editorCookie, _ := h.as(editor(), "")
+
+	w := h.request(http.MethodPost, "/sites/staging/blog/backup", form(csrf), cookie)
+	backupTask := w.Header().Get("Location")
+	h.wait()
+
+	body := h.events(backupTask, editorCookie).Body.String()
+	testutil.Contains(t, "editor's backup", body, "<li>Saving a copy of the content…</li>", "The backup is taken.")
+	testutil.NotContains(t, "editor's backup", body, "<li>Started the job")
+	testutil.Contains(t, "platform's backup", h.events(backupTask, cookie).Body.String(),
+		"<li>Started the job blog-backup-manual.</li>")
+
+	h = newHarness(t)
+	cookie, csrf = h.as(platform(), "")
+	editorCookie, _ = h.as(editor(), "fa")
+
+	w = h.request(http.MethodPost, "/sites/staging/blog/promote", form(csrf), cookie)
+	promoteTask := w.Header().Get("Location")
+	h.wait()
+
+	body = h.events(promoteTask, editorCookie).Body.String()
+	testutil.Contains(t, "editor's publish", body,
+		i18n.Persian.T(i18n.ReadingSettings), i18n.Persian.T(i18n.NewVersionPublished), i18n.Persian.T(i18n.SiteUpdated))
+
+	for _, hidden := range []string{"c0ffee10", "Git", "بازبینی", "deployed"} {
+		testutil.NotContains(t, "editor's publish", body, hidden)
+	}
 }
 
 func TestFailedDeployIsAuditedAsFailed(t *testing.T) {

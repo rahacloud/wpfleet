@@ -209,7 +209,7 @@ const (
 	AlreadyPublished
 	// Syncing says the server is reading the branch.
 	Syncing
-	// Deployed says a deploy finished (%s: revision, %s: status).
+	// Deployed says a deploy finished, in engineering words (%s: revision).
 	Deployed
 	// Restored says a restore finished.
 	Restored
@@ -394,6 +394,20 @@ const (
 	BackupsUnknown
 	// SiteUnavailable says the site's state could not be read, so the page shows less.
 	SiteUnavailable
+	// UpdatingSite says a site is being updated, in plain words (%s: site, %s: environment).
+	UpdatingSite
+	// SavingContent says a backup is copying the site's content, in plain words.
+	SavingContent
+	// PuttingContentBack says a restore is putting the backup's content back, in plain words.
+	PuttingContentBack
+	// ReadingSettings says the server is reading the latest settings, in plain words.
+	ReadingSettings
+	// AlreadyHasVersion says the site already has the version, so it is only updated again, in plain words.
+	AlreadyHasVersion
+	// NewVersionPublished says the new version is published, in plain words.
+	NewVersionPublished
+	// SiteUpdated says an update of the site finished, in plain words.
+	SiteUpdated
 
 	// keyCount is the number of messages; it stays last.
 	keyCount
@@ -501,7 +515,7 @@ var english = [keyCount]string{
 	Published:          "Published as commit %s.",
 	AlreadyPublished:   "This environment already has that version; deploying it again.",
 	Syncing:            "Reading the latest settings from Git…",
-	Deployed:           "Deployed revision %s (%s).",
+	Deployed:           "Deployed revision %s.",
 	Restored:           "The backup is restored.",
 	BackedUp:           "The backup is taken.",
 	UnknownSite:        "There is no such site in this environment.",
@@ -590,6 +604,13 @@ var english = [keyCount]string{
 	GoHome:              "Back to your sites",
 	BackupsUnknown:      "Could not check the backups right now",
 	SiteUnavailable:     "The site's state could not be read right now. Try again in a minute.",
+	UpdatingSite:        "Updating %s in %s…",
+	SavingContent:       "Saving a copy of the content…",
+	PuttingContentBack:  "Putting the content back…",
+	ReadingSettings:     "Reading the latest settings…",
+	AlreadyHasVersion:   "This site already has that version; updating it again.",
+	NewVersionPublished: "The new version is published.",
+	SiteUpdated:         "The site is updated.",
 }
 
 // persian is the Persian catalogue.
@@ -694,7 +715,7 @@ var persian = [keyCount]string{
 	Published:          "با کامیت %s منتشر شد.",
 	AlreadyPublished:   "این محیط همین نسخه را دارد؛ دوباره مستقر می‌شود.",
 	Syncing:            "خواندن آخرین تنظیمات از Git…",
-	Deployed:           "بازبینی %s مستقر شد (%s).",
+	Deployed:           "بازبینی %s مستقر شد.",
 	Restored:           "پشتیبان بازگردانده شد.",
 	BackedUp:           "پشتیبان گرفته شد.",
 	UnknownSite:        "چنین سایتی در این محیط نیست.",
@@ -783,4 +804,11 @@ var persian = [keyCount]string{
 	GoHome:              "بازگشت به سایت‌های شما",
 	BackupsUnknown:      "وضعیت پشتیبان‌ها الان خوانده نشد",
 	SiteUnavailable:     "وضعیت سایت الان خوانده نشد. یک دقیقهٔ دیگر دوباره امتحان کنید.",
+	UpdatingSite:        "در حال به‌روزرسانی %s در %s…",
+	SavingContent:       "در حال ذخیرهٔ یک نسخه از محتوا…",
+	PuttingContentBack:  "در حال بازگرداندن محتوا…",
+	ReadingSettings:     "در حال خواندن آخرین تنظیمات…",
+	AlreadyHasVersion:   "این سایت همین نسخه را دارد؛ دوباره به‌روز می‌شود.",
+	NewVersionPublished: "نسخهٔ تازه منتشر شد.",
+	SiteUpdated:         "سایت به‌روز شد.",
 }

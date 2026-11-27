@@ -137,7 +137,7 @@ func (s *Server) deploy(c *echo.Context) error {
 	}
 
 	return s.start(c, t.sess, t.env, t.site, t.action, release, func(ctx context.Context, tk *task) outcome {
-		tk.line(i18n.Syncing)
+		tk.lineFor(say(i18n.ReadingSettings), say(i18n.Syncing))
 
 		sha, err := s.deps.Repo.Sync(ctx)
 		if err != nil {
@@ -158,9 +158,7 @@ func (s *Server) deployAt(ctx context.Context, tk *task, t target, sha, detail s
 	case res.Error != "":
 		return failed(i18n.FailedDeploy, fmt.Errorf("%w: %s", errDeployFailed, res.Error), sha, detail)
 	default:
-		args := []msgArg{number(res.Revision), names(res.Status)[0]}
-
-		return succeeded(i18n.Deployed, args, sha, detail)
+		return succeededFor(say(i18n.SiteUpdated), say(i18n.Deployed, number(res.Revision)), sha, detail)
 	}
 }
 
@@ -211,7 +209,7 @@ func (s *Server) promote(c *echo.Context) error {
 // the commit message and the audit detail describe the branch as it is, not
 // a snapshot up to a poll interval old.
 func (s *Server) publish(ctx context.Context, tk *task, t target) outcome {
-	tk.line(i18n.Syncing)
+	tk.lineFor(say(i18n.ReadingSettings), say(i18n.Syncing))
 
 	sha, err := s.deps.Repo.Sync(ctx)
 	if err != nil {
@@ -226,7 +224,7 @@ func (s *Server) publish(ctx context.Context, tk *task, t target) outcome {
 	detail := plan.Current.String() + " -> " + plan.Target.String()
 
 	if !plan.Changed() {
-		tk.line(i18n.AlreadyPublished)
+		tk.lineFor(say(i18n.AlreadyHasVersion), say(i18n.AlreadyPublished))
 
 		return s.deployAt(ctx, tk, t, sha, detail)
 	}
@@ -239,7 +237,7 @@ func (s *Server) publish(ctx context.Context, tk *task, t target) outcome {
 
 	switch {
 	case errors.Is(err, gitrepo.ErrNothingToCommit):
-		tk.line(i18n.AlreadyPublished)
+		tk.lineFor(say(i18n.AlreadyHasVersion), say(i18n.AlreadyPublished))
 
 		sha, err = s.deps.Repo.Sync(ctx)
 		if err != nil {
@@ -248,7 +246,7 @@ func (s *Server) publish(ctx context.Context, tk *task, t target) outcome {
 	case err != nil:
 		return failed(i18n.FailedPublish, fmt.Errorf("committing the promotion: %w", err), "", detail)
 	default:
-		tk.line(i18n.Published, ui.ShortSHA(sha))
+		tk.lineFor(say(i18n.NewVersionPublished), say(i18n.Published, names(ui.ShortSHA(sha))...))
 	}
 
 	return s.deployAt(ctx, tk, t, sha, detail)
@@ -349,7 +347,7 @@ func (s *Server) backup(c *echo.Context) error {
 			return failed(i18n.FailedBackup, err, "", run.Job)
 		}
 
-		return succeeded(i18n.BackedUp, nil, "", run.Job)
+		return succeeded(say(i18n.BackedUp), "", run.Job)
 	})
 }
 
@@ -386,6 +384,6 @@ func (s *Server) restore(c *echo.Context) error {
 			return failed(i18n.FailedRestore, err, "", detail)
 		}
 
-		return succeeded(i18n.Restored, nil, "", detail)
+		return succeeded(say(i18n.Restored), "", detail)
 	})
 }
