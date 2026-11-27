@@ -1,0 +1,21 @@
+# gitleaks reads this file from the repository root. It keeps the default
+# rules and allows only the two findings below, each by its file and its
+# exact value, so it still holds after a history rewrite changes the commits.
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+    [[rules.allowlists]]
+    description = "A message-catalogue key, not a secret"
+    condition = "AND"
+    paths = ['''^internal/infra/web/tasks\.go$''']
+    regexes = ['''^i18n\.FailedStopped$''']
+
+    [[rules.allowlists]]
+    description = "A test fixture that checks secrets are never printed"
+    condition = "AND"
+    paths = ['''^internal/infra/values/edit_test\.go$''']
+    regexes = ['''^abcdefghijklmnop1234$''']
