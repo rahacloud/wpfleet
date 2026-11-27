@@ -74,12 +74,12 @@ templ CellStatusFragment(l i18n.Lang, s CellStatus) {
 				}
 			</div>
 			<div>
-				{ l.T(i18n.DriftLabel) }:
+				{ l.T(i18n.DriftLabel) }:{ " " }
 				@driftLabel(l, s.Drift)
 			</div>
 		}
 		<div>
-			{ l.T(i18n.LastBackup) }:
+			{ l.T(i18n.LastBackup) }:{ " " }
 			@lastBackup(l, s.BackupEnabled, s.LastBackup)
 		</div>
 	</div>

@@ -456,6 +456,8 @@ func TestStatusFragment(t *testing.T) {
 	cookie, _ := h.as(platform(), "")
 	fragment := h.request(http.MethodGet, "/sites/staging/blog/status", nil, cookie).Body.String()
 	testutil.Contains(t, "platform", fragment, "01234567", "Differs from Git", "2026-11-26 02:00 UTC")
+	// A label and the value a component renders are apart, as "Drift: x".
+	testutil.Contains(t, "spaces after the labels", fragment, "Drift: <span", "Last backup: ")
 
 	cookie, _ = h.as(editor(), "")
 	fragment = h.request(http.MethodGet, "/sites/staging/blog/status", nil, cookie).Body.String()
