@@ -7,8 +7,8 @@ import "github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 const htmxConfig = `{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false,"selfRequestsOnly":true}`
 
 // Layout is the page around every other page: the language and direction,
-// the stylesheet and htmx, and the header with the language switch and
-// sign-out.
+// the stylesheets with the brand's colors, htmx, the header with the
+// brand, the person, the language switch and sign-out, and the footer.
 templ Layout(p Page) {
 	<!DOCTYPE html>
 	<html lang={ p.L.Code() } dir={ p.L.Dir() }>
@@ -16,38 +16,91 @@ templ Layout(p Page) {
 			<meta charset="utf-8"/>
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<meta name="htmx-config" content={ htmxConfig }/>
-			<title>{ p.Title } · wpfleet</title>
+			<title>{ p.Title } · { p.Brand.Name }</title>
+			if p.Brand.FaviconURL != "" {
+				<link rel="icon" href={ p.Brand.FaviconURL } type={ p.Brand.FaviconType }/>
+			}
 			<link rel="stylesheet" href="/static/app.css"/>
+			if p.Brand.ThemeURL != "" {
+				<link rel="stylesheet" href={ p.Brand.ThemeURL }/>
+			}
 			<script src="/static/htmx-2.0.11.min.js" defer></script>
 			<script src="/static/htmx-ext-sse-2.2.4.min.js" defer></script>
 		</head>
 		<body>
-			<header class="top">
-				<a class="brand" href="/">wpfleet</a>
-				if p.User != "" {
-					<form method="post" action="/lang">
-						<input type="hidden" name="csrf" value={ p.CSRF }/>
-						<input type="hidden" name="return" value={ p.Return }/>
-						<label for="lang">{ p.L.T(i18n.LanguageLabel) }</label>
-						<select id="lang" name="lang">
-							for _, l := range i18n.Supported() {
-								<option value={ l.Code() } selected?={ l == p.L }>{ l.Name() }</option>
-							}
-						</select>
-						<button type="submit">{ p.L.T(i18n.Change) }</button>
-					</form>
-					<span class="muted">{ p.User }</span>
-					<form method="post" action="/auth/logout">
-						<input type="hidden" name="csrf" value={ p.CSRF }/>
-						<button type="submit" class="link">{ p.L.T(i18n.SignOut) }</button>
-					</form>
-				}
-			</header>
-			<main>
+			<a class="wf-skip" href="#main">{ p.L.T(i18n.SkipToContent) }</a>
+			@header(p)
+			<main id="main" tabindex="-1">
 				{ children... }
 			</main>
+			@footer(p)
 		</body>
 	</html>
+}
+
+// header shows the brand, and for a signed-in person their name, the
+// language switch and sign-out; before sign-in it shows links to the page
+// in the other languages.
+templ header(p Page) {
+	<header class="wf-header">
+		<a class="wf-brand" href="/">
+			if p.Brand.LogoURL != "" {
+				<img class="wf-brand-logo" src={ p.Brand.LogoURL } alt=""/>
+			}
+			<span class="wf-brand-name">{ p.Brand.Name }</span>
+		</a>
+		<nav class="wf-header-nav" aria-label={ p.L.T(i18n.AccountMenu) }>
+			if p.Brand.SupportURL != "" {
+				<a class="wf-header-link" href={ templ.SafeURL(p.Brand.SupportURL) }>{ p.L.T(i18n.NeedHelp) }</a>
+			}
+			if p.User != "" {
+				@langForm(p)
+				<span class="wf-user" title={ p.UserEmail }>{ p.User }</span>
+				<form class="wf-inline-form" method="post" action="/auth/logout">
+					<input type="hidden" name="csrf" value={ p.CSRF }/>
+					<button type="submit" class="wf-btn wf-btn-secondary wf-btn-small">{ p.L.T(i18n.SignOut) }</button>
+				</form>
+			} else {
+				for _, l := range p.LangLinks {
+					<a class="wf-header-link" href={ templ.SafeURL(l.URL) } lang={ l.L.Code() } hreflang={ l.L.Code() }>{ l.L.Name() }</a>
+				}
+			}
+		</nav>
+	</header>
+}
+
+// langForm switches a signed-in person's language with one button per
+// other language, so the choice is kept in the session without a separate
+// submit button.
+templ langForm(p Page) {
+	<form class="wf-inline-form" method="post" action="/lang">
+		<input type="hidden" name="csrf" value={ p.CSRF }/>
+		<input type="hidden" name="return" value={ p.Return }/>
+		<span class="wf-visually-hidden">{ p.L.T(i18n.LanguageLabel) }</span>
+		for _, l := range i18n.Supported() {
+			if l != p.L {
+				<button type="submit" class="wf-linkbtn" name="lang" value={ l.Code() } lang={ l.Code() }>{ l.Name() }</button>
+			}
+		}
+	</form>
+}
+
+// footer names wpfleet, its version, its license and its repository on
+// every page. It is not part of the brand and no setting changes it.
+templ footer(p Page) {
+	<footer class="wf-footer">
+		<p>
+			<span>{ p.L.T(i18n.PoweredBy) } <a href={ templ.SafeURL(Repository) }>wpfleet</a> <span class="ltr">{ p.Version }</span></span>
+			<span aria-hidden="true">·</span>
+			<a href={ templ.SafeURL(LicenseURL) }>{ p.L.T(i18n.LicenseName) }</a>
+			<span aria-hidden="true">·</span>
+			<a class="ltr" href={ templ.SafeURL(Repository) } aria-label={ p.L.T(i18n.SourceCode) + ": github.com/rahacloud/wpfleet" }>github.com/rahacloud/wpfleet</a>
+			if p.Brand.SupportURL != "" {
+				<span aria-hidden="true">·</span>
+				<a href={ templ.SafeURL(p.Brand.SupportURL) }>{ p.L.T(i18n.NeedHelp) }</a>
+			}
+		</p>
+	</footer>
 }
 
 // MessagePage says one thing: a refusal, an error, or that the person

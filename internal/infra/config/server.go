@@ -4,9 +4,14 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/mail"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"github.com/rahacloud/wpfleet/internal/domain/brand"
 )
 
 // The environment variables that hold the server's secrets. They are never
@@ -57,7 +62,45 @@ type Server struct {
 	Admin Admin `json:"admin" koanf:"admin"`
 	// Access is the list of rules; whatever no rule allows is denied.
 	Access []AccessRule `json:"access" koanf:"access"`
+	// Branding is the fleet's own name, logo and color in the UI.
+	Branding Branding `json:"branding" koanf:"branding"`
 }
+
+// Branding is how the UI presents itself: the client's name, logo, favicon
+// and color, where to ask for help, and a welcome on the home page. The
+// footer, which names wpfleet, its license and its repository, is not part
+// of it and cannot be changed.
+type Branding struct {
+	// Name is shown beside the logo and in the browser's title.
+	Name string `json:"name" koanf:"name"`
+	// Logo is a PNG, SVG or WebP file of at most 512 KiB, as a path inside
+	// the fleet repository; empty shows the name alone.
+	Logo string `json:"logo" koanf:"logo"`
+	// Favicon follows the logo's rules; empty uses wpfleet's own.
+	Favicon string `json:"favicon" koanf:"favicon"`
+	// PrimaryColor is a CSS hex color for buttons and links; the text on it
+	// and its shades for each theme are derived so they stay readable.
+	PrimaryColor string `json:"primaryColor" koanf:"primaryColor"`
+	// SupportURL is where "Need help?" leads; optional.
+	SupportURL string `json:"supportURL" koanf:"supportURL"`
+	// SupportEmail is the address "Need help?" writes to when there is no
+	// SupportURL; optional.
+	SupportEmail string `json:"supportEmail" koanf:"supportEmail"`
+	// Welcome is a short text on the home page, per language; optional.
+	Welcome Welcome `json:"welcome" koanf:"welcome"`
+}
+
+// Welcome is a text in each language of the UI.
+type Welcome struct {
+	// EN is the English text.
+	EN string `json:"en" koanf:"en"`
+	// FA is the Persian text.
+	FA string `json:"fa" koanf:"fa"`
+}
+
+// MaxWelcomeLength is the longest welcome text, in characters: a sentence
+// or two, not a page.
+const MaxWelcomeLength = 500
 
 // ServerGit is the fleet repository the server clones and pushes to. Its
 // credentials come from EnvGitSSHKey or EnvGitToken.
@@ -146,6 +189,10 @@ func DefaultServer() Server {
 		Session: Session{MaxAge: 8 * time.Hour}, //nolint:mnd // the design's default sign-in length
 		Admin:   Admin{MatchEmail: true},
 		Access:  nil,
+		Branding: Branding{
+			Name: brand.DefaultName, Logo: "", Favicon: "", PrimaryColor: brand.DefaultPrimaryColor,
+			SupportURL: "", SupportEmail: "", Welcome: Welcome{EN: "", FA: ""},
+		},
 	}
 }
 
@@ -172,7 +219,77 @@ func (s Server) validate(envs map[string]bool) []error {
 		errs = append(errs, r.validate(i, envs)...)
 	}
 
+	return append(errs, s.Branding.validate()...)
+}
+
+// validate checks the branding: a name, image paths that stay inside the
+// fleet repository and name an allowed type, a hex color, an absolute
+// support URL, a plain email address and short welcome texts. That the
+// image files exist and match their type is checked by serve, which has
+// the repository.
+func (b Branding) validate() []error {
+	var errs []error
+
+	if strings.TrimSpace(b.Name) == "" {
+		errs = append(errs, fmt.Errorf("%w: server.branding.name is empty (leave it out for %q)", ErrInvalid,
+			brand.DefaultName))
+	}
+
+	errs = append(errs, checkBrandImage("server.branding.logo", b.Logo)...)
+	errs = append(errs, checkBrandImage("server.branding.favicon", b.Favicon)...)
+
+	_, err := brand.ParseColor(b.PrimaryColor)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("%w: server.branding.primaryColor is %w", ErrInvalid, err))
+	}
+
+	if b.SupportURL != "" {
+		errs = append(errs, checkURL("server.branding.supportURL", b.SupportURL))
+	}
+
+	if b.SupportEmail != "" {
+		a, err := mail.ParseAddress(b.SupportEmail)
+		if err != nil || a.Name != "" || a.Address != b.SupportEmail {
+			errs = append(errs, fmt.Errorf("%w: server.branding.supportEmail must be a plain address like "+
+				"help@example.com, not %q", ErrInvalid, b.SupportEmail))
+		}
+	}
+
+	errs = append(errs, checkWelcome("en", b.Welcome.EN), checkWelcome("fa", b.Welcome.FA))
+
 	return errs
+}
+
+// checkBrandImage checks a logo or favicon path: empty, or relative inside
+// the fleet repository with an allowed extension.
+func checkBrandImage(key, p string) []error {
+	if p == "" {
+		return nil
+	}
+
+	var errs []error
+
+	if !filepath.IsLocal(p) || strings.Contains(p, `\`) {
+		errs = append(errs, fmt.Errorf("%w: %s must be a relative path inside the fleet repository, not %q",
+			ErrInvalid, key, p))
+	}
+
+	_, err := brand.TypeOf(p)
+	if err != nil {
+		errs = append(errs, fmt.Errorf("%w: %s %w", ErrInvalid, key, err))
+	}
+
+	return errs
+}
+
+// checkWelcome checks that a welcome text is short.
+func checkWelcome(lang, text string) error {
+	if n := utf8.RuneCountInString(text); n > MaxWelcomeLength {
+		return fmt.Errorf("%w: server.branding.welcome.%s has %d characters, more than %d",
+			ErrInvalid, lang, n, MaxWelcomeLength)
+	}
+
+	return nil
 }
 
 // validate checks one access rule.

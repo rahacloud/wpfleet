@@ -10,8 +10,6 @@ const (
 	SignOut Key = iota
 	// LanguageLabel labels the language switch.
 	LanguageLabel
-	// Change submits the language switch.
-	Change
 	// SitesTitle heads the fleet page.
 	SitesTitle
 	// SiteColumn heads the site column of the fleet grid.
@@ -221,6 +219,32 @@ const (
 	UnknownSite
 	// NoPromoteFrom says the environment has nothing to publish from.
 	NoPromoteFrom
+	// SkipToContent is the first link of every page, for keyboards and
+	// screen readers.
+	SkipToContent
+	// AccountMenu names the header's links and buttons for screen readers.
+	AccountMenu
+	// NeedHelp leads to the fleet's support.
+	NeedHelp
+	// PoweredBy comes before wpfleet's name in the footer.
+	PoweredBy
+	// LicenseName names wpfleet's license in the footer.
+	LicenseName
+	// SourceCode names the link to wpfleet's repository for screen readers.
+	SourceCode
+	// SignInHeading heads the sign-in page (%s: the fleet's name).
+	SignInHeading
+	// SignInIntro says what the server is for, to someone who has not
+	// signed in.
+	SignInIntro
+	// SignInButton starts the sign-in.
+	SignInButton
+	// SignInHint says which account to use.
+	SignInHint
+	// SignInTrouble asks whether signing in fails, before the support link.
+	SignInTrouble
+	// ContactSupport is the link to the fleet's support.
+	ContactSupport
 
 	// keyCount is the number of messages; it stays last.
 	keyCount
@@ -232,7 +256,6 @@ const (
 var english = [keyCount]string{
 	SignOut:            "Sign out",
 	LanguageLabel:      "Language",
-	Change:             "Change",
 	SitesTitle:         "Sites",
 	SiteColumn:         "Site",
 	NoSites:            "There are no sites for you to see.",
@@ -334,6 +357,18 @@ var english = [keyCount]string{
 	BackedUp:           "The backup is taken.",
 	UnknownSite:        "There is no such site in this environment.",
 	NoPromoteFrom:      "Nothing publishes into this environment.",
+	SkipToContent:      "Skip to content",
+	AccountMenu:        "Your account",
+	NeedHelp:           "Need help?",
+	PoweredBy:          "Powered by",
+	LicenseName:        "Apache-2.0 license",
+	SourceCode:         "Source code",
+	SignInHeading:      "Welcome to %s",
+	SignInIntro:        "Here you open your websites' dashboards, publish changes and take backups.",
+	SignInButton:       "Sign in with your company account",
+	SignInHint:         "Use the account you sign in to your other work tools with. You do not need a WordPress password.",
+	SignInTrouble:      "Trouble signing in?",
+	ContactSupport:     "Contact support",
 }
 
 // persian is the Persian catalogue.
@@ -342,7 +377,6 @@ var english = [keyCount]string{
 var persian = [keyCount]string{
 	SignOut:            "خروج",
 	LanguageLabel:      "زبان",
-	Change:             "تغییر",
 	SitesTitle:         "سایت‌ها",
 	SiteColumn:         "سایت",
 	NoSites:            "سایتی برای نمایش به شما نیست.",
@@ -444,4 +478,16 @@ var persian = [keyCount]string{
 	BackedUp:           "پشتیبان گرفته شد.",
 	UnknownSite:        "چنین سایتی در این محیط نیست.",
 	NoPromoteFrom:      "هیچ محیطی در این محیط منتشر نمی‌شود.",
+	SkipToContent:      "رفتن به محتوا",
+	AccountMenu:        "حساب شما",
+	NeedHelp:           "کمک لازم دارید؟",
+	PoweredBy:          "ساخته‌شده با",
+	LicenseName:        "مجوز Apache-2.0",
+	SourceCode:         "کد منبع",
+	SignInHeading:      "به %s خوش آمدید",
+	SignInIntro:        "از اینجا داشبورد سایت‌هایتان را باز می‌کنید، تغییرها را منتشر می‌کنید و پشتیبان می‌گیرید.",
+	SignInButton:       "ورود با حساب کاری شرکت",
+	SignInHint:         "از همان حسابی استفاده کنید که با آن به دیگر ابزارهای کاری وارد می‌شوید. به رمز وردپرس نیازی ندارید.",
+	SignInTrouble:      "در ورود مشکل دارید؟",
+	ContactSupport:     "تماس با پشتیبانی",
 }

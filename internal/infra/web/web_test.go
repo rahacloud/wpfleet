@@ -78,6 +78,14 @@ type harness struct {
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 
+	return newHarnessWith(t, nil)
+}
+
+// newHarnessWith is newHarness with change applied to the dependencies
+// before the server is built.
+func newHarnessWith(t *testing.T, change func(*web.Deps)) *harness {
+	t.Helper()
+
 	h := &harness{
 		t:        t,
 		server:   nil,
@@ -96,15 +104,23 @@ func newHarness(t *testing.T) *harness {
 		groupPlatform: {envDev: everything, envStaging: everything, envProd: everything},
 	}
 
-	server, err := web.New(web.Deps{
+	deps := web.Deps{
 		Auth: h.auth, Sessions: h.sessions, Access: rules, Repo: h.repo, Ops: h.ops, Locks: h.locks,
 		Audit: h.audit.write, Logger: slog.New(slog.DiscardHandler), MatchEmail: true,
 		Committer: gitrepo.Signature{Name: "wpfleet", Email: "wpfleet@example.com"},
 		VerifyWebhook: func(body []byte, signature string) bool {
 			return signature == "sha256=good" && string(body) == `{"ref":"refs/heads/main"}`
 		},
-		Now: nil,
-	})
+		Now:      nil,
+		Branding: web.Branding{}, //nolint:exhaustruct_v5 // the zero value is wpfleet's own look
+		Version:  "v0.0.0-test",
+	}
+
+	if change != nil {
+		change(&deps)
+	}
+
+	server, err := web.New(deps)
 	testutil.NoError(t, err)
 
 	h.server = server
@@ -188,12 +204,12 @@ func TestUnauthenticatedPageRedirectsToLogin(t *testing.T) {
 
 	w := h.request(http.MethodGet, "/sites/staging/blog?tab=1", nil, nil)
 	testutil.Equal(t, "status", w.Code, http.StatusSeeOther)
-	want := "/auth/login?return=" + url.QueryEscape("/sites/staging/blog?tab=1")
+	want := "/auth/signin?return=" + url.QueryEscape("/sites/staging/blog?tab=1")
 	testutil.Equal(t, "location", w.Header().Get("Location"), want)
 
 	w = h.request(http.MethodGet, "/sites/staging/blog/status", nil, nil, "HX-Request", "true")
 	testutil.Equal(t, "htmx status", w.Code, http.StatusUnauthorized)
-	testutil.Equal(t, "htmx redirect", w.Header().Get("Hx-Redirect"), "/auth/login")
+	testutil.Equal(t, "htmx redirect", w.Header().Get("Hx-Redirect"), "/auth/signin")
 
 	w = h.request(http.MethodPost, "/sites/staging/blog/deploy", form("x"), nil)
 	testutil.Equal(t, "post status", w.Code, http.StatusUnauthorized)

@@ -74,6 +74,24 @@ config:
     #    environments: ["*"]
     #    sites: ["*"]
     #    allow: [view, deploy, login, backup, restore]
+    # The client's own look in the UI. The footer, which names wpfleet, its
+    # license and its repository, is always shown.
+    branding:
+      name: wpfleet
+      # PNG, SVG or WebP files of at most 512 KiB, as paths inside the fleet
+      # repository, so a push changes them. Empty logo: the name alone;
+      # empty favicon: wpfleet's own.
+      logo: ""
+      favicon: ""
+      # Buttons and links; the text on them is chosen to stay readable.
+      primaryColor: "#1f5fbf"
+      # "Need help?" in the header and the footer; both optional.
+      supportURL: ""
+      supportEmail: ""
+      # A short text on the home page, per language; optional.
+      welcome:
+        en: ""
+        fa: ""
 
 # The Secret, made by hand in the release's namespace, that holds the
 # server's secrets. Each key is the environment variable it becomes; a

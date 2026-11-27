@@ -58,6 +58,8 @@ The platform team sees every site in every environment, which version each one r
 
 ![The fleet page of the platform team: three sites in development and staging, one with a newer version waiting in development](docs/images/server-fleet.png)
 
+The UI carries the client's own name, logo and color, set in `server.branding`; the logo and the favicon are files in the client's own fleet repository, so a new logo is a commit. The footer of every page always names wpfleet, its license and this repository.
+
 Every action, allowed or refused, is written to the server's log with the person's email address, and a publication is a Git commit with that person as its author. The pictures come from the demo fleet on a local kind cluster, with invented users signed in through Dex (`sam@example.com` in the shop team, `alex@example.com` in the platform team) and an address bar drawn on them afterwards.
 
 ## Development

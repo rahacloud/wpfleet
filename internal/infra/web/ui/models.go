@@ -23,11 +23,53 @@ type Page struct {
 	// User names the signed-in person; empty on a page shown before sign-in
 	// or after sign-out, which then has no header forms.
 	User string
+	// UserEmail is the signed-in person's email, shown when User is hovered.
+	UserEmail string
 	// CSRF is the session's token for the header's forms.
 	CSRF string
 	// Return is the path the language switch comes back to.
 	Return string
+	// LangLinks switch the language of a page shown without a session,
+	// which has no session to keep the choice in.
+	LangLinks []LangLink
+	// Brand is the fleet's own name, logo and color.
+	Brand Brand
+	// Version is wpfleet's version, for the footer.
+	Version string
 }
+
+// LangLink is a link to the same page in another language.
+type LangLink struct {
+	// L is the language the link leads to.
+	L i18n.Lang
+	// URL is the page's path with the language in its query.
+	URL string
+}
+
+// Brand is the fleet's own look, as the layout shows it.
+type Brand struct {
+	// Name is shown beside the logo and in the title.
+	Name string
+	// LogoURL is the logo's address; empty shows the name alone.
+	LogoURL string
+	// FaviconURL and FaviconType are the favicon's address and media type.
+	FaviconURL, FaviconType string
+	// ThemeURL is the stylesheet with the brand's colors.
+	ThemeURL string
+	// SupportURL is where "Need help?" leads, an https or mailto URL; empty
+	// shows no link.
+	SupportURL string
+	// Welcome is the home page's short text in the page's language; empty
+	// shows none.
+	Welcome string
+}
+
+// Repository is wpfleet's source code, which the footer of every page
+// links whatever the brand.
+const Repository = "https://github.com/rahacloud/wpfleet"
+
+// LicenseURL is wpfleet's license.
+const LicenseURL = Repository + "/blob/main/LICENSE"
 
 // Action is an operation a person starts from the UI.
 type Action string
