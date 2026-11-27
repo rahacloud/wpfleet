@@ -48,6 +48,9 @@ jobs:
           cache: false
       # The runner image ships shellcheck, so run: steps are checked too.
       - run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -color
+      # actionlint checks only run: steps; the scripts under hack/ need their
+      # own pass.
+      - run: shellcheck hack/*.sh
 
   zizmor:
     name: zizmor

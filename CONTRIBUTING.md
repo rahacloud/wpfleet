@@ -12,7 +12,7 @@ You need:
 
 - Go, at the version in `go.mod`.
 - [just](https://github.com/casey/just), which runs the recipes in the `justfile`.
-- [golangci-lint](https://golangci-lint.run) v2 and [Helm](https://helm.sh) v3 or later, for `just lint`.
+- [golangci-lint](https://golangci-lint.run) v2, [Helm](https://helm.sh) v3 or later, and [ShellCheck](https://www.shellcheck.net) (or Docker, which `just lint` then runs it in), for `just lint`.
 - PHP 8 on the `PATH`, for the tests of the one-time login plugin and the host fix-up. Without PHP those tests skip locally; CI has PHP and runs them.
 - Docker, only for `just image` and `just release-snapshot`.
 
@@ -21,7 +21,7 @@ Then:
 ```bash
 just build    # builds ./wpfleet
 just test     # every test, with the race detector and coverage
-just lint     # golangci-lint and helm lint of both charts
+just lint     # golangci-lint, helm lint of both charts, and shellcheck of hack/
 just generate # the templ components of the web UI, after a .templ change
 ```
 

@@ -97,7 +97,7 @@ Until the first release, `@latest` builds the newest commit on `main`. [docs/get
 just build    # ./wpfleet
 just generate # the templ components of the web UI
 just test
-just lint     # golangci-lint and helm lint
+just lint     # golangci-lint, helm lint and shellcheck
 just image    # the server image, wpfleet:dev
 ```
 

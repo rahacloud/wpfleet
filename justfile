@@ -14,11 +14,13 @@ generate:
 test:
     go test -race ./... -covermode=atomic -coverprofile=coverage.out
 
-# Lint the Go code and the charts
+# Lint the Go code, the charts and the shell scripts (shellcheck runs in
+# Docker when it is not installed)
 lint:
     golangci-lint run -c .golangci.yml
     helm lint charts/wordpress -f charts/wordpress/ci/test-values.yaml
     helm lint deployments/helm/wpfleet -f deployments/helm/wpfleet/ci/test-values.yaml
+    if command -v shellcheck >/dev/null 2>&1; then shellcheck hack/*.sh; else docker run --rm -v "$PWD:/mnt" -w /mnt koalaman/shellcheck:v0.10.0 hack/*.sh; fi
 
 # Build the server image (proxy variables reach go mod download, not the image);
 # the version and commit come from Git, since the build context has no .git
