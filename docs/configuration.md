@@ -19,12 +19,14 @@ A few `WPFLEET_` variables are never configuration keys, because they belong to 
 | --- | --- |
 | `WPFLEET_FLEET` | The fleet directory, like `--fleet`. |
 | `WPFLEET_ENV` | The environment, like `--env`. |
-| `WPFLEET_OUTPUT` | Not read as configuration; use `--output`. |
+| `WPFLEET_OUTPUT` | The output format, like `--output`: `table` or `json`. |
 | `WPFLEET_VERBOSE` | Debug logs on stderr, like `--verbose`. |
+| `WPFLEET_CONFIG` | The server's own `wpfleet.yaml`, like `wpfleet serve --config`. |
+| `WPFLEET_DATA` | The directory for the server's clone of the fleet repository, like `wpfleet serve --data` (default `/var/lib/wpfleet`). |
 | `WPFLEET_S3_ACCESS_KEY_ID` | The access key of the backup bucket, for `backup list`, `backup restore` and `copy`. |
 | `WPFLEET_S3_SECRET_ACCESS_KEY` | The secret key of the backup bucket. |
 
-Secrets never go in `wpfleet.yaml`. The S3 keys come only from the two variables above, and the coming server reads its own secrets from variables as well (see the `server` section below).
+Secrets never go in `wpfleet.yaml`. The S3 keys come only from the two variables above, and the server reads its own secrets from variables as well (see the `server` section below).
 
 ## Top level
 
@@ -61,7 +63,7 @@ Each entry is one environment, usually `development`, `staging` and `production`
 | --- | --- | --- | --- |
 | `name` | string | required | The environment's name, as `--env` takes it. Unique. |
 | `namespace` | string | required | The Kubernetes namespace of the environment's sites. wpfleet does not create it. |
-| `kubeconfig` | string | `""` | A kubeconfig file, relative to the fleet directory unless absolute. Empty follows the usual rules: `KUBECONFIG`, then `~/.kube/config`. Inside the cluster, the coming server uses its ServiceAccount when this is empty. |
+| `kubeconfig` | string | `""` | A kubeconfig file, relative to the fleet directory unless absolute. Empty follows the usual rules: `KUBECONFIG`, then `~/.kube/config`. Inside the cluster, the server uses its ServiceAccount when this is empty. |
 | `context` | string | `""` | A context in that kubeconfig. Empty uses the current context. |
 | `values` | string | `environments/<name>` | The directory of the environment's values files, relative to the fleet directory. It holds `_shared.yaml` and one `<site>.yaml` per site; every `*.yaml` file other than `_shared.yaml` is a site, named by the file name, which must be a DNS label. |
 | `promoteFrom` | string | `""` | The environment that `wpfleet promote --to <name>` copies images from. Empty means nothing promotes into this environment. It must name another environment. |
@@ -76,14 +78,14 @@ The nightly backups themselves are made by a CronJob in each site's release, con
 | `backup.s3.bucket` | string | `""` | The bucket's name. It must be the bucket the sites' CronJobs write to. |
 | `backup.s3.region` | string | `""` | The bucket's region; most S3-compatible services do not need one. |
 
-## server (coming with wpfleet serve)
+## server
 
-`wpfleet serve`, a web UI that runs the same operations for people who sign in with single sign-on, is being built and is not in a release yet. This section is written from [design.md](design.md) and may change before it ships; until then wpfleet does not read it.
+`wpfleet serve` runs a web UI over the same operations for people who sign in with single sign-on. It reads this section from its own `wpfleet.yaml`, the file given with `--config` (or `WPFLEET_CONFIG`). That file cannot live in the fleet repository, because it names the repository; it holds the `server` section and the environments, which the access rules are checked against. The fleet itself (environments, kubeconfigs, chart, registry, bucket) is read from the server's clone of the repository, so a push changes what the server does without a restart. The CLI ignores this section, but every command still checks it, so a broken rule shows up in any fleet that has one.
 
-| Key | Type | Default | Meaning |
-| --- | --- | --- | --- |
+The server refuses to start without `publicURL`, `git.url`, `git.committer`, `oidc.issuer`, `oidc.clientID`, at least one access rule, and `WPFLEET_SESSION_KEY`; with an access rule that names an unknown permission or an environment the fleet in the repository does not have; and with a logo or favicon that is missing from the repository or is not what its name says.
+
 | `server.listen` | string | `:8080` | The address the web UI listens on. |
-| `server.metricsListen` | string | `:9090` | The address of the metrics endpoint. |
+| `server.metricsListen` | string | `:9090` | The address of `/metrics`, kept off the UI's listener. Empty turns it off. |
 | `server.publicURL` | string | | The URL people open, for example `https://wpfleet.example.com`. The single sign-on redirect is `<publicURL>/auth/callback`. |
 | `server.git.url` | string | | The fleet repository the server clones, for example `git@github.com:example/fleet.git`. |
 | `server.git.branch` | string | `main` | The branch the server deploys from and pushes promotions to. |
@@ -93,9 +95,12 @@ The nightly backups themselves are made by a CronJob in each site's release, con
 | `server.oidc.issuer` | string | | The OpenID Connect issuer, for example `https://sso.example.com/realms/main`. Any provider that publishes discovery works: Keycloak, Dex, Azure AD, Google, and GitHub through Dex. |
 | `server.oidc.clientID` | string | | The OIDC client ID. |
 | `server.oidc.groupsClaim` | string | `groups` | The ID token claim that holds the person's groups, which the access rules match. |
+| `server.oidc.scopes` | list of strings | `openid`, `email`, `profile`, and `groups` when the provider lists it | The scopes the sign-in asks for. Dex puts the groups claim in the ID token only when `groups` is asked for. |
+| `server.oidc.assumeEmailVerified` | bool | `false` | Keeps an email claim that comes without `email_verified`, for a provider whose emails people cannot change. Off, such an email is dropped and never matches a WordPress user. |
 | `server.session.maxAge` | duration | `8h` | How long a sign-in lasts. Groups are read again at the next sign-in. |
 | `server.admin.matchEmail` | bool | `true` | "Open admin" logs in as the WordPress administrator whose email is the signed-in person's, when there is one, so the site's own records name the right person. |
 | `server.access` | list | none | The access rules. Access is denied unless a rule allows it. |
+| `server.branding` | map | | The name, logo and color the UI shows; see below. |
 
 Each rule in `server.access` has these keys:
 
@@ -127,7 +132,34 @@ server:
       environments: [development, staging]
       sites: [shop]
       allow: [view, login]
+  branding:
+    name: Northwind Media
+    logo: brand/logo.svg
+    primaryColor: "#0e7c66"
+    supportEmail: web-help@example.com
+    welcome:
+      en: Open your site's dashboard from here.
+      fa: داشبورد سایت خود را از اینجا باز کنید.
 ```
+
+### server.branding
+
+The UI is meant for the people who run the sites' content, so it carries your organization's name, logo and color rather than wpfleet's. The image files live in the fleet repository, next to the sites, so changing the logo is a commit like any other: the server reads them again after each push.
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `server.branding.name` | string | `wpfleet` | The name in the header, the browser's title and the sign-in page ("Welcome to <name>"). It cannot be blank. |
+| `server.branding.logo` | string | `""` | The logo in the header and on the sign-in page: a PNG, SVG or WebP file of at most 512 KiB, as a relative path inside the fleet repository (`brand/logo.svg`). Empty shows the name alone. |
+| `server.branding.favicon` | string | `""` | The browser tab's icon, with the logo's rules. Empty uses wpfleet's own. |
+| `server.branding.primaryColor` | string | `#1f5fbf` | The color of buttons and links, as `#rgb` or `#rrggbb`. The text on a button is black or white, whichever reads better, and a color too light or too dark for the light or the dark theme is adjusted just enough to stay readable (WCAG AA). |
+| `server.branding.supportURL` | string | `""` | Where "Need help?" in the header leads, and the support link on the empty home page, on refusals, on error pages and under a failed action. An absolute `http` or `https` URL. |
+| `server.branding.supportEmail` | string | `""` | A plain address (`help@example.com`) for the same links when `supportURL` is empty; with both, the pages show the address beside the link. With neither, the pages tell people to ask whoever set up the tool. |
+| `server.branding.welcome.en` | string | `""` | A short text under the heading of the home page, at most 500 characters. |
+| `server.branding.welcome.fa` | string | `""` | The same in Persian. A Persian page with no Persian text shows the English one. |
+
+The footer is not part of the branding. Every page ends with "Powered by wpfleet <version> · Apache-2.0 license · github.com/rahacloud/wpfleet", and no setting changes or hides it.
+
+A logo or favicon that is missing, too large, a symbolic link out of the repository, or not what its extension says stops the server at start. After a push, a broken file is left out with a warning in the log (the name shows alone, or wpfleet's favicon), so a bad commit never takes the pages down.
 
 The server's secrets come from environment variables, never from `wpfleet.yaml`:
 

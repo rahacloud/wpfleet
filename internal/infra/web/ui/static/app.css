@@ -704,6 +704,12 @@ details.restore form {
  * and use only the --wf-* tokens, so a brand's colors and radius reach them.
  */
 
+/* A card on a page keeps its distance from what follows it; :where keeps
+ * the headings' own larger margins. */
+:where(main > section + *) {
+  margin-block-start: var(--wf-space);
+}
+
 .wf-page-site h2 {
   margin: 0;
   font-size: 1.2rem;
@@ -788,6 +794,12 @@ details.restore form {
 
 .wf-page-actions .wf-card {
   justify-content: space-between;
+}
+
+/* A link styled as a button is as wide as its words, like the buttons in
+ * forms beside it. */
+.wf-page-actions .wf-card > .wf-btn {
+  align-self: flex-start;
 }
 
 .wf-page-technical summary,

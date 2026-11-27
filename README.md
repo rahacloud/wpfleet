@@ -2,7 +2,7 @@
 
 Manage a fleet of WordPress sites on Kubernetes from one Git repository: deploy every site with one shared Helm chart, build and promote site images from development to production, open a site's admin with a one-time link, and back sites up to S3 and restore them.
 
-> **Status: before its first release.** Every command in [docs/design.md](docs/design.md) is built and covered by tests against fakes. `sites list`, `deploy`, `diff`, `promote` and `admin` have run against a real cluster (a local kind cluster, 2026-11-27); `build`, `backup` and `copy` have not yet run against a real registry or bucket. `serve` has run in the same kind cluster from its chart, with Dex for sign-in and Gitea as the fleet repository, and was driven in headless Chromium (2026-11-27); backups through it have not run, since that cluster has no bucket. Expect rough edges until v0.1. `docs/design.md` is the contract the commands are built against.
+> **Status: before its first release.** Every command in [docs/design.md](docs/design.md) is built and covered by tests against fakes. `sites list`, `deploy`, `diff`, `promote` and `admin` have run against a real cluster (a local kind cluster, 2026-11-27); `build`, `backup` and `copy` have not yet run against a real registry or bucket. `serve` has run in the same kind cluster from its chart, with Dex for sign-in, Gitea as the fleet repository and an invented brand, and was driven in headless Chromium (2026-11-27); backups through it have not run, since that cluster has no bucket. Expect rough edges until v0.1. `docs/design.md` is the contract the commands are built against.
 
 ## How it works
 
@@ -42,25 +42,29 @@ The pictures come from a demo fleet of three invented sites on a local kind clus
 wpfleet serve --config wpfleet-server.yaml --data /var/lib/wpfleet
 ```
 
-The configuration file holds the `server` section of [docs/design.md](docs/design.md): the public URL, the fleet repository, the OIDC provider and the access rules. The server refuses to start without the OIDC settings, the session key and at least one access rule. Secrets come only from the environment: `WPFLEET_SESSION_KEY` (32 random bytes in base64, `openssl rand -base64 32`), `WPFLEET_OIDC_CLIENT_SECRET`, `WPFLEET_GIT_SSH_KEY` or `WPFLEET_GIT_TOKEN`, `WPFLEET_GIT_WEBHOOK_SECRET` for push webhooks, and the S3 keys for backups.
+The configuration file holds the `server` section described in [docs/configuration.md](docs/configuration.md): the public URL, the fleet repository, the OIDC provider, the access rules and the branding. The server refuses to start without the OIDC settings, the session key and at least one access rule. Secrets come only from the environment: `WPFLEET_SESSION_KEY` (32 random bytes in base64, `openssl rand -base64 32`), `WPFLEET_OIDC_CLIENT_SECRET`, `WPFLEET_GIT_SSH_KEY` or `WPFLEET_GIT_TOKEN`, `WPFLEET_GIT_WEBHOOK_SECRET` for push webhooks, and the S3 keys for backups.
 
 ## The web UI for the people who run the sites
 
-Editors and marketing teams do not need a terminal. They open the wpfleet address, sign in with the company account, and see only the sites their team looks after. "Open admin" takes them straight into the WordPress dashboard, without a WordPress password; the link is made for that one click and works once.
+Editors and marketing teams do not need a terminal. They open the wpfleet address, sign in with the company account, and see only the sites their team looks after, one card per site. Each card says in words whether the site is online, links the site itself, and has "Open admin", which takes them straight into the WordPress dashboard without a WordPress password; the link is made for that one click and works once.
 
-![Signing in as an editor, opening the shop site, and landing in its WordPress dashboard with "Open admin"](docs/images/server-open-admin.gif)
+![Signing in as an editor through the sign-in page, and landing in the shop's WordPress dashboard with "Open admin"](docs/images/server-open-admin.gif)
 
 What a person sees depends on their team. An editor of the shop sees the shop and nothing else, and only the buttons their team may use; for this editor that is "Open admin":
 
-![The fleet page of an editor of the shop: one site, in development and staging](docs/images/server-editor-fleet.png)
+![The home page of an editor of the shop: one card, with the live staging copy first and development below it](docs/images/server-editor-fleet.png)
 
-The platform team sees every site in every environment, which version each one runs, whether a newer one waits in the previous environment, and which Git commit is deployed. On a site's page they can publish the previous environment's version, deploy, and take a backup. The UI is also in Persian, right to left.
+The platform team sees every site. When a newer version waits in the previous environment, the card offers "Publish development to staging"; a site's page adds "Back up now" and "Restore a backup", each with one line on what it does, the backups in words ("Yesterday at 03:12 UTC"), and, closed by default, the technical details: image, release history with the commit and author of each publication, pods and what a deploy would change. A restore explains what it replaces and asks for the site's name before it starts. The UI is also in Persian, right to left, with Solar Hijri dates, and follows the system's dark mode.
 
-![The fleet page of the platform team: three sites in development and staging, one with a newer version waiting in development](docs/images/server-fleet.png)
+![The home page of the platform team: three sites, each with its status in words and "Open admin" per environment](docs/images/server-fleet.png)
 
-The UI carries the client's own name, logo and color, set in `server.branding`; the logo and the favicon are files in the client's own fleet repository, so a new logo is a commit. The footer of every page always names wpfleet, its license and this repository.
+![The same page in Persian, right to left, in dark mode](docs/images/server-fleet-fa.png)
 
-Every action, allowed or refused, is written to the server's log with the person's email address, and a publication is a Git commit with that person as its author. The pictures come from the demo fleet on a local kind cluster, with invented users signed in through Dex (`sam@example.com` in the shop team, `alex@example.com` in the platform team) and an address bar drawn on them afterwards.
+Every action, allowed or refused, and every sign-in and sign-out is written to the server's log with the person's email address, and a publication is a Git commit with that person as its author. [docs/for-content-teams.md](docs/for-content-teams.md) is a guide to the UI written for editors. The pictures come from the demo fleet on a local kind cluster, branded as the invented "Northwind Media", with invented users signed in through Dex (`sam@example.com` in the shop team, `alex@example.com` in the platform team) and an address bar drawn on them afterwards.
+
+### Make it yours
+
+The UI carries your organization's name, logo, favicon and color, a welcome line on the home page and a support contact behind every "Need help?", all set in `server.branding` ([docs/configuration.md](docs/configuration.md#serverbranding)). The logo and favicon are files in your own fleet repository, so a new logo is a commit, and the color is adjusted just enough to stay readable on light and dark pages. The footer is not part of the branding: every page always says "Powered by wpfleet", its version, the Apache-2.0 license and a link to this repository, and no setting hides it.
 
 ## Development
 
@@ -87,6 +91,6 @@ Apache-2.0, see [LICENSE](LICENSE).
 - [Getting started](docs/getting-started.md): install wpfleet, make a fleet repository, deploy a first site, open its admin and back it up.
 - [Configuration](docs/configuration.md): every key of `wpfleet.yaml`.
 - [The WordPress chart](docs/chart.md): every value of the chart, grouped by purpose.
-- [For content teams](docs/for-content-teams.md): what editors will be able to do in the coming web UI.
+- [For content teams](docs/for-content-teams.md): what editors can do in the web UI, in plain words.
 - [Example fleet](examples/fleet): a small fleet with two environments and one site.
 - [Design](docs/design.md): how wpfleet works inside.

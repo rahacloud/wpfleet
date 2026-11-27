@@ -1,6 +1,6 @@
 # Getting started
 
-This guide is for the platform engineer who sets wpfleet up for a team. It takes you from an empty Git repository to a WordPress site that runs in Kubernetes, opens its admin without a password, and backs itself up every night. It uses only the `wpfleet` command line; the web UI (`wpfleet serve`) is not released yet, and [for-content-teams.md](for-content-teams.md) describes what it will give the people who edit the sites.
+This guide is for the platform engineer who sets wpfleet up for a team. It takes you from an empty Git repository to a WordPress site that runs in Kubernetes, opens its admin without a password, and backs itself up every night. It uses only the `wpfleet` command line. The web UI, `wpfleet serve`, is set up separately from its chart in `deployments/helm/wpfleet` with the `server` section of [configuration.md](configuration.md), and [for-content-teams.md](for-content-teams.md) describes what it gives the people who edit the sites.
 
 A complete example of everything below is in [examples/fleet](../examples/fleet). Every value that wpfleet reads from `wpfleet.yaml` is in [configuration.md](configuration.md), and every value of the WordPress chart is in [chart.md](chart.md).
 
@@ -239,4 +239,5 @@ Every command prints a table for people and JSON with `--output json`. Errors go
 
 - [configuration.md](configuration.md): every key of `wpfleet.yaml` and how environment variables override them.
 - [chart.md](chart.md): every value of the WordPress chart, grouped by purpose.
-- [design.md](design.md): how wpfleet works inside, and what the coming server will do.
+- [design.md](design.md): how wpfleet works inside, the server included.
+- [for-content-teams.md](for-content-teams.md): a guide to the web UI for the people who edit the sites.
