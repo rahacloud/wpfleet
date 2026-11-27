@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Applies the GitHub settings that wpfleet needs once it is public: security
-# features, labels, repository settings and rulesets. docs/going-public.md says
-# when to run it. Every write sets the full desired state (labels and rulesets
+# features, labels, repository settings and rulesets. Run it once after
+# the repository is made public. Every write sets the full desired state (labels and rulesets
 # are looked up by name first), so running it again changes nothing. At the
 # end it reads each ruleset back and checks who may bypass it.
 #
@@ -101,7 +101,7 @@ if private="$(read_api "repos/$repo" --jq .private)"; then
 		if "$dry_run"; then
 			log "$repo is private; a run without --dry-run refuses until it is public"
 		elif ! "$allow_private"; then
-			echo "go-public: $repo is still private. Make it public first (docs/going-public.md), or pass --allow-private." >&2
+			echo "go-public: $repo is still private. Make it public first, or pass --allow-private." >&2
 			exit 1
 		fi
 	fi
