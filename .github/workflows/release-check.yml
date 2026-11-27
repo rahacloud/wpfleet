@@ -60,4 +60,4 @@ jobs:
         # ldflags stamp the way build/package/Dockerfile does.
         run: >-
           docker run --rm "ghcr.io/rahacloud/wpfleet:$(jq -r .version dist/metadata.json)-amd64" --version
-          | grep -F "rev ${GITHUB_SHA::7}"
+          | grep -F "${GITHUB_SHA::7}"
