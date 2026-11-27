@@ -598,6 +598,46 @@ func TestPromoteFromNowhereIsRefused(t *testing.T) {
 	w := h.request(http.MethodPost, "/sites/development/blog/promote", form(csrf), cookie)
 	testutil.Equal(t, "status", w.Code, http.StatusBadRequest)
 	testutil.Equal(t, "plans", len(h.ops.called("PlanPromotion")), 0)
+
+	rec := h.audit.only(t)
+	testutil.Equal(t, "result", rec.Result, audit.ResultDenied)
+	testutil.Equal(t, "allowed", rec.Allowed, false)
+	testutil.Equal(t, "detail", rec.Detail, "the environment has no promoteFrom")
+}
+
+// An action that cannot even read the fleet is still in the audit log.
+func TestFleetReadFailureIsAudited(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.ops.envErr = errFake
+	cookie, csrf := h.as(platform(), "")
+
+	w := h.request(http.MethodPost, "/sites/staging/blog/deploy", form(csrf), cookie)
+	testutil.Equal(t, "status", w.Code, http.StatusInternalServerError)
+
+	rec := h.audit.only(t)
+	testutil.Equal(t, "result", rec.Result, audit.ResultFailed)
+	testutil.Contains(t, "detail", rec.Detail, "reading the fleet", errFake.Error())
+}
+
+// A login waits for no one: while another action holds the site it is
+// refused as busy, so its token never lands in a database being replaced.
+func TestAdminIsRefusedWhileBusy(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	release, err := h.locks.TryLock(envStaging, siteBlog, "restore")
+	testutil.NoError(t, err)
+
+	defer release()
+
+	cookie, csrf := h.as(editor(), "")
+
+	w := h.request(http.MethodPost, "/sites/staging/blog/admin", form(csrf), cookie)
+	testutil.Equal(t, "status", w.Code, http.StatusConflict)
+	testutil.Equal(t, "logins", len(h.ops.called("AdminLogin")), 0)
+	testutil.Equal(t, "result", h.audit.only(t).Result, audit.ResultBusy)
 }
 
 func TestRestoreNeedsTheSiteName(t *testing.T) {
@@ -611,7 +651,9 @@ func TestRestoreNeedsTheSiteName(t *testing.T) {
 	testutil.Equal(t, "status", w.Code, http.StatusBadRequest)
 	testutil.Contains(t, "page", w.Body.String(), "nothing was restored")
 	testutil.Equal(t, "restores", len(h.ops.called("Restore")), 0)
-	testutil.Equal(t, "refusal audited", h.audit.only(t).Result, audit.ResultDenied)
+	refusal := h.audit.only(t)
+	testutil.Equal(t, "refusal audited", refusal.Result, audit.ResultDenied)
+	testutil.Equal(t, "refusal not allowed", refusal.Allowed, false)
 
 	w = h.request(http.MethodPost, "/sites/staging/blog/restore",
 		form(csrf, "stamp", "20261126T020000Z", "confirm", "blog", "uploads", "1"), cookie)

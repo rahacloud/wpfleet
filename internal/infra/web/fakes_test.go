@@ -273,6 +273,7 @@ type fakeOps struct {
 	loginErr  error
 	deployErr string
 	backupLog string
+	envErr    error
 	plan      fleet.PromotionPlan
 }
 
@@ -289,6 +290,7 @@ func newFakeOps() *fakeOps {
 		loginErr:  nil,
 		deployErr: "",
 		backupLog: "dumping <database>\n",
+		envErr:    nil,
 		envs: []web.Environment{
 			{Name: envDev, PromoteFrom: ""},
 			{Name: envStaging, PromoteFrom: envDev},
@@ -321,7 +323,7 @@ func newFakeOps() *fakeOps {
 	}
 }
 
-func (o *fakeOps) Environments() ([]web.Environment, error) { return o.envs, nil }
+func (o *fakeOps) Environments() ([]web.Environment, error) { return o.envs, o.envErr }
 
 func (o *fakeOps) Sites(env string) ([]string, error) { return o.sites[env], nil }
 

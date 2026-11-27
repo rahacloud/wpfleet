@@ -187,7 +187,7 @@ The packages behind this, and what each one guarantees:
 
 ### The admin login
 
-"Open admin" in the UI makes the same one-time link as `wpfleet admin` and redirects the browser to it, so the link never shows on the screen. With `server.admin.matchEmail` (on by default) it logs in as the WordPress user whose email is the signed-in person's, when one exists and is an administrator, so the site's own records name the right person; otherwise it logs in as the CLI would. The audit record says which WordPress user it was.
+"Open admin" in the UI makes the same one-time link as `wpfleet admin` and redirects the browser to it, so the link never shows on the screen. With `server.admin.matchEmail` (on by default) it logs in as the WordPress user whose email is the signed-in person's, when one exists and is an administrator, so the site's own records name the right person; otherwise it logs in as the CLI would. The audit record says which WordPress user it was. Making the link takes the site's lock like any other operation, so a login while a deploy, backup or restore runs is refused as busy rather than writing its token into a database a restore is replacing.
 
 ### Audit
 

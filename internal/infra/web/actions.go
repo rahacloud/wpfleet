@@ -30,6 +30,15 @@ func (s *Server) record(sess session.Session, action ui.Action, env, site string
 	}
 }
 
+// auditTarget audits the action t with a result and a detail. A denied
+// action is never recorded as allowed, so a search for allowed=false finds
+// every refusal.
+func (s *Server) auditTarget(ctx context.Context, t target, result, detail string) {
+	rec := s.record(t.sess, t.action, t.env, t.site)
+	rec.Result, rec.Detail, rec.Allowed = result, detail, result != audit.ResultDenied
+	s.audit(ctx, rec)
+}
+
 // audit writes a record and counts it.
 func (s *Server) audit(ctx context.Context, r audit.Record) {
 	r.Time = s.now()
@@ -55,9 +64,7 @@ func (s *Server) prepare(c *echo.Context, action ui.Action, perms ...access.Perm
 	back := ui.SitePath(t.env, t.site)
 
 	refuse := func(status int, detail, text string) (target, bool, error) {
-		rec := s.record(sess, action, t.env, t.site)
-		rec.Result, rec.Detail, rec.Allowed = audit.ResultDenied, detail, false
-		s.audit(c.Request().Context(), rec)
+		s.auditTarget(c.Request().Context(), t, audit.ResultDenied, detail)
 
 		return t, false, s.refuse(c, status, text, back)
 	}
@@ -74,6 +81,8 @@ func (s *Server) prepare(c *echo.Context, action ui.Action, perms ...access.Perm
 
 	ok, err := s.siteExists(t.env, t.site)
 	if err != nil {
+		s.auditTarget(c.Request().Context(), t, audit.ResultFailed, joinDetail("reading the fleet", err.Error()))
+
 		return t, false, err
 	}
 
@@ -97,9 +106,7 @@ func (s *Server) lock(c *echo.Context, t target) (func(), bool, error) {
 		return nil, false, err
 	}
 
-	rec := s.record(t.sess, t.action, t.env, t.site)
-	rec.Result, rec.Detail = audit.ResultBusy, busy.Error()
-	s.audit(c.Request().Context(), rec)
+	s.auditTarget(c.Request().Context(), t, audit.ResultBusy, busy.Error())
 
 	l := s.lang(c)
 	text := l.T(i18n.Busy, ui.Action(busy.Action).Label(l), t.site, t.env)
@@ -157,21 +164,25 @@ func (s *Server) promote(c *echo.Context) error {
 		return err
 	}
 
+	ctx := c.Request().Context()
+
 	env, _, err := s.environment(t.env)
 	if err != nil {
+		s.auditTarget(ctx, t, audit.ResultFailed, joinDetail("reading the fleet", err.Error()))
+
 		return err
 	}
 
 	l := s.lang(c)
 
 	if env.PromoteFrom == "" {
+		s.auditTarget(ctx, t, audit.ResultDenied, "the environment has no promoteFrom")
+
 		return s.refuse(c, http.StatusBadRequest, l.T(i18n.NoPromoteFrom), ui.SitePath(t.env, t.site))
 	}
 
 	if !s.allows(t.sess, env.PromoteFrom, t.site, access.View) {
-		rec := s.record(t.sess, t.action, t.env, t.site)
-		rec.Result, rec.Detail, rec.Allowed = audit.ResultDenied, "no view permission on "+env.PromoteFrom, false
-		s.audit(c.Request().Context(), rec)
+		s.auditTarget(ctx, t, audit.ResultDenied, "no view permission on "+env.PromoteFrom)
 
 		return s.refuse(c, http.StatusForbidden, l.T(i18n.Forbidden), ui.SitePath(t.env, t.site))
 	}
@@ -238,9 +249,15 @@ func authorName(id access.Identity) string {
 
 // admin makes a one-time login link and redirects the browser to it. The
 // link is never rendered: it is only in the Location header of a response
-// that is not cached.
+// that is not cached. It holds the site's lock while it makes the link, so
+// it never writes its token into a database a restore is replacing.
 func (s *Server) admin(c *echo.Context) error {
 	t, ok, err := s.prepare(c, ui.ActionLogin, access.Login)
+	if !ok {
+		return err
+	}
+
+	release, ok, err := s.lock(c, t)
 	if !ok {
 		return err
 	}
@@ -253,6 +270,9 @@ func (s *Server) admin(c *echo.Context) error {
 	}
 
 	login, err := s.deps.Ops.AdminLogin(ctx, t.env, t.site, email)
+
+	release()
+
 	rec := s.record(t.sess, t.action, t.env, t.site)
 
 	if err != nil {
@@ -308,9 +328,7 @@ func (s *Server) restore(c *echo.Context) error {
 	uploads := c.FormValue("uploads") == "1"
 
 	if c.FormValue("confirm") != t.site || stamp == "" {
-		rec := s.record(t.sess, t.action, t.env, t.site)
-		rec.Result, rec.Detail = audit.ResultDenied, "the typed confirmation did not match the site's name"
-		s.audit(c.Request().Context(), rec)
+		s.auditTarget(c.Request().Context(), t, audit.ResultDenied, "the typed confirmation did not match the site's name")
 
 		return s.refuse(c, http.StatusBadRequest, s.lang(c).T(i18n.RestoreMismatch), ui.SitePath(t.env, t.site))
 	}
