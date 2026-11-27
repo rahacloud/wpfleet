@@ -109,7 +109,7 @@ rbac:
   # Rules added to every site namespace's Role, beyond what Helm and the
   # operations touch there (Secrets, ConfigMaps, Services,
   # PersistentVolumeClaims, Deployments, Ingresses, CronJobs, Jobs, Pods with
-  # exec and log, and Events). A fleet whose own chart makes other kinds
+  # exec and log, ReplicaSets to read, and Events). A fleet whose own chart makes other kinds
   # needs them here.
   extraRules: []
 

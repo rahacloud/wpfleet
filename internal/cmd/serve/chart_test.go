@@ -77,3 +77,35 @@ func TestChartRoleOnlyReadsPods(t *testing.T) {
 		testutil.True(t, role.Namespace+": logs", logs)
 	}
 }
+
+// allows reports whether role grants verb on resource in group.
+func allows(role rbacv1.Role, group, resource, verb string) bool {
+	return slices.ContainsFunc(role.Rules, func(rule rbacv1.PolicyRule) bool {
+		return slices.Contains(rule.APIGroups, group) && slices.Contains(rule.Resources, resource) &&
+			slices.Contains(rule.Verbs, verb)
+	})
+}
+
+// A deploy from the UI waits for readiness, and Helm's status watcher
+// computes a Deployment's status from its ReplicaSets and their pods; without
+// reading ReplicaSets the status stays Unknown and every deploy times out.
+// The server never writes a ReplicaSet, so it only reads them.
+func TestChartRoleLetsHelmWait(t *testing.T) {
+	t.Parallel()
+
+	for _, role := range siteRoles(t) {
+		for _, gr := range [][2]string{
+			{"apps", "deployments"}, {"apps", "replicasets"}, {"", "pods"}, {"batch", "jobs"},
+			{"", "persistentvolumeclaims"}, {"", "services"}, {"networking.k8s.io", "ingresses"},
+		} {
+			for _, verb := range []string{"get", "list", "watch"} {
+				testutil.True(t, role.Namespace+": "+verb+" "+gr[1], allows(role, gr[0], gr[1], verb))
+			}
+		}
+
+		for _, verb := range []string{"create", "update", "patch", "delete"} {
+			testutil.True(t, role.Namespace+": replicasets are read-only, not "+verb,
+				!allows(role, "apps", "replicasets", verb))
+		}
+	}
+}

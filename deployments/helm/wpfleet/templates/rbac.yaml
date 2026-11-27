@@ -22,6 +22,11 @@ rules:
   - apiGroups: [apps]
     resources: [deployments]
     verbs: [get, list, watch, create, update, patch, delete]
+  # Helm's wait computes a Deployment's status from its ReplicaSets; without
+  # reading them every deploy that waits for readiness times out.
+  - apiGroups: [apps]
+    resources: [replicasets]
+    verbs: [get, list, watch]
   - apiGroups: [networking.k8s.io]
     resources: [ingresses]
     verbs: [get, list, watch, create, update, patch, delete]
