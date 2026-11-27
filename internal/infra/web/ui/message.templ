@@ -1,0 +1,26 @@
+package ui
+
+// MessagePage says one thing in plain words: a refusal, an error, or that
+// the person signed out. A refusal or an error also says what the person can
+// do about it and whom to ask.
+templ MessagePage(p Page, m Message) {
+	@Layout(p) {
+		<h1>{ m.Title }</h1>
+		<section class="wf-card wf-stack wf-page-message" role={ messageRole(m.Bad) }>
+			if m.Bad {
+				<p><span class="wf-badge wf-badge-bad">{ m.Title }</span> { m.Text }</p>
+			} else {
+				<p>{ m.Text }</p>
+			}
+			if m.Hint != "" {
+				<p class="wf-help">{ m.Hint }</p>
+			}
+			if m.Bad && p.User != "" {
+				@supportBlock(p.L, m.Support)
+			}
+			if m.Link != "" {
+				<p><a class="wf-btn wf-btn-primary" href={ templ.SafeURL(m.Link) }>{ m.LinkText }</a></p>
+			}
+		</section>
+	}
+}

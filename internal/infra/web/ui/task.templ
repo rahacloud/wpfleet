@@ -2,27 +2,61 @@ package ui
 
 import "github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
 
-// TaskPage follows a running action over server-sent events: lines and Job
-// logs go into the log, and the result replaces "Working" when it ends.
+// TaskPage follows a running action over server-sent events. The steps are
+// written in plain words; the raw log of the Jobs goes into a disclosure that
+// stays closed unless someone opens it; the result replaces "Working" when
+// the action ends and says what to do next.
 templ TaskPage(p Page, t TaskView) {
 	@Layout(p) {
-		<h1>{ p.L.T(i18n.TaskTitle, t.Action.Label(p.L), t.Site, t.Env) }</h1>
-		<div hx-ext="sse" sse-connect={ t.EventsURL } sse-close="done">
-			<pre id="log" sse-swap="line,log" hx-swap="beforeend"></pre>
-			<div id="result" sse-swap="done">
-				<p class="loading">{ p.L.T(i18n.Working) }</p>
-			</div>
+		<h1>{ taskHeading(p.L, t) }</h1>
+		<p class="wf-help">{ p.L.T(i18n.TaskWait) }</p>
+		<div class="wf-stack" hx-ext="sse" sse-connect={ t.EventsURL } sse-close="done">
+			<section class="wf-card wf-stack wf-page-progress" aria-labelledby="progress-title">
+				<h2 id="progress-title">{ p.L.T(i18n.ProgressTitle) }</h2>
+				<ol id="steps" class="wf-stack wf-page-steps" sse-swap="line" hx-swap="beforeend"></ol>
+				<div id="result" sse-swap="done" aria-live="polite">
+					<p class="wf-muted">{ p.L.T(i18n.Working) }</p>
+				</div>
+			</section>
+			<details class="wf-page-log">
+				<summary>{ p.L.T(i18n.ShowLog) }</summary>
+				<pre id="log" sse-swap="log" hx-swap="beforeend"></pre>
+			</details>
 		</div>
 		<p><a href={ templ.SafeURL(SitePath(t.Env, t.Site)) }>{ p.L.T(i18n.Back) }</a></p>
 	}
 }
 
-// TaskText is a piece of the task's log, appended to it as it comes.
+// TaskStep is one step of the task, appended to the list as it comes.
+templ TaskStep(text string) {
+	<li>{ text }</li>
+}
+
+// TaskText is a piece of the task's raw log, appended to it as it comes.
 templ TaskText(text string) {
 	<span>{ text }</span>
 }
 
-// TaskResult is how the task ended.
-templ TaskResult(ok bool, text string) {
-	<p class={ "message", templ.KV("bad", !ok) }>{ text }</p>
+// TaskResult is how the task ended, in plain words, with what to do next;
+// the error behind a failure is only for people with deploy, and closed.
+templ TaskResult(l i18n.Lang, o TaskOutcome) {
+	<div class="wf-stack wf-page-result" role="status">
+		if o.OK {
+			<p><span class="wf-badge wf-badge-ok">{ l.T(i18n.TaskDone) }</span> { o.Text }</p>
+			<p class="wf-help">{ l.T(i18n.NextSuccess) }</p>
+		} else {
+			<p><span class="wf-badge wf-badge-bad">{ l.T(i18n.TaskFailed) }</span> { o.Text }</p>
+			<p class="wf-help">{ l.T(i18n.NextFailure) }</p>
+			if o.Detail != "" {
+				<details>
+					<summary>{ l.T(i18n.TechnicalDetails) }</summary>
+					<pre>{ l.T(i18n.FailureDetail, o.Detail) }</pre>
+				</details>
+			}
+			@supportBlock(l, o.Support)
+		}
+		if o.Back != "" {
+			<p><a class="wf-btn wf-btn-primary" href={ templ.SafeURL(o.Back) }>{ l.T(i18n.Back) }</a></p>
+		}
+	</div>
 }

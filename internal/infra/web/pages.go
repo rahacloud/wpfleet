@@ -8,7 +8,6 @@ import (
 	"github.com/labstack/echo/v5"
 
 	"github.com/rahacloud/wpfleet/internal/domain/access"
-	"github.com/rahacloud/wpfleet/internal/domain/fleet"
 	"github.com/rahacloud/wpfleet/internal/infra/session"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui"
 	"github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
@@ -85,201 +84,6 @@ func (s *Server) viewable(c *echo.Context, env, site string) error {
 	return nil
 }
 
-// fleet renders the grid of sites and environments the person may see. A
-// person who may see nothing gets a page that says so and nothing else.
-func (s *Server) fleet(c *echo.Context) error {
-	sess := sessionOf(c)
-	l := s.lang(c)
-
-	envs, err := s.deps.Ops.Environments()
-	if err != nil {
-		return err
-	}
-
-	listed, anySite, err := s.visibleEnvironments(sess, envs)
-	if err != nil {
-		return err
-	}
-
-	if len(listed) == 0 {
-		if anySite {
-			return s.message(c, http.StatusForbidden, i18n.NoAccessTitle, i18n.NoAccess, true, "", i18n.SignIn)
-		}
-
-		return render(c, http.StatusOK, ui.FleetPage(s.page(c, l.T(i18n.SitesTitle)), ui.FleetView{Envs: nil, Rows: nil}))
-	}
-
-	rows, err := s.deps.Ops.ListSites(c.Request().Context(), listed)
-	if err != nil {
-		return err
-	}
-
-	canView := func(env, site string) bool { return s.allows(sess, env, site, access.View) }
-	view := fleetView(envs, listed, canView, rows)
-
-	return render(c, http.StatusOK, ui.FleetPage(s.page(c, l.T(i18n.SitesTitle)), view))
-}
-
-// visibleEnvironments finds the environments with a site the person may
-// see, and whether the fleet has any site at all.
-func (s *Server) visibleEnvironments(sess session.Session, envs []Environment) ([]string, bool, error) {
-	anySite := false
-
-	var listed []string
-
-	for _, env := range envs {
-		sites, err := s.deps.Ops.Sites(env.Name)
-		if err != nil {
-			return nil, false, err
-		}
-
-		anySite = anySite || len(sites) > 0
-
-		if slices.ContainsFunc(sites, func(site string) bool { return s.allows(sess, env.Name, site, access.View) }) {
-			listed = append(listed, env.Name)
-		}
-	}
-
-	return listed, anySite, nil
-}
-
-// cellKey is one site in one environment.
-type cellKey struct{ env, site string }
-
-// fleetView lays the rows out as a grid over the listed environments: a
-// cell the person may not see stays empty, and a cell whose promoteFrom
-// environment runs another tag says so when the person may see that one.
-func fleetView(
-	envs []Environment, listed []string, canView func(env, site string) bool, rows []ops.SiteRow,
-) ui.FleetView {
-	byCell := map[cellKey]ops.SiteRow{}
-
-	var names []string
-
-	for _, r := range rows {
-		if !canView(r.Env, r.Site) {
-			continue
-		}
-
-		byCell[cellKey{r.Env, r.Site}] = r
-
-		if !slices.Contains(names, r.Site) {
-			names = append(names, r.Site)
-		}
-	}
-
-	slices.Sort(names)
-
-	from := map[string]string{}
-	for _, e := range envs {
-		from[e.Name] = e.PromoteFrom
-	}
-
-	view := ui.FleetView{Envs: listed, Rows: make([]ui.FleetRow, 0, len(names))}
-
-	for _, name := range names {
-		row := ui.FleetRow{Site: name, Cells: make([]ui.FleetCell, 0, len(listed))}
-
-		for _, env := range listed {
-			row.Cells = append(row.Cells, fleetCell(byCell, from, env, name, canView(env, name)))
-		}
-
-		view.Rows = append(view.Rows, row)
-	}
-
-	return view
-}
-
-// fleetCell is one cell of the grid.
-func fleetCell(byCell map[cellKey]ops.SiteRow, from map[string]string, env, site string, visible bool) ui.FleetCell {
-	cell := ui.FleetCell{Env: env, Site: site, Visible: visible, Present: false, Tag: "", Ready: "", NewerIn: ""}
-	if !visible {
-		return cell
-	}
-
-	r, ok := byCell[cellKey{env, site}]
-	if !ok {
-		return cell
-	}
-
-	cell.Present = true
-	cell.Tag = imageTag(r.Image)
-
-	if r.Ready != ops.ReadyUnknown {
-		cell.Ready = r.Ready
-	}
-
-	if source, ok := byCell[cellKey{from[env], site}]; ok && imageTag(source.Image) != cell.Tag {
-		cell.NewerIn = from[env]
-	}
-
-	return cell
-}
-
-// imageTag is the tag of an image reference, empty when it has none.
-func imageTag(image string) string {
-	ref, err := fleet.ParseImageRef(image)
-	if err != nil {
-		return ""
-	}
-
-	return ref.Tag
-}
-
-// statusFragment is what a grid cell loads after the page: the commit and
-// drift for people with deploy, and the last backup.
-func (s *Server) statusFragment(c *echo.Context) error {
-	env, site := c.Param("env"), c.Param("site")
-	err := s.viewable(c, env, site)
-	if err != nil {
-		return err
-	}
-
-	ctx := c.Request().Context()
-	engineering := s.allows(sessionOf(c), env, site, access.Deploy)
-
-	status := ui.CellStatus{
-		Engineering: engineering, Commit: "", Dirty: false, Drift: ui.DriftUnknown,
-		BackupEnabled: false, LastBackup: nil,
-	}
-
-	detail, err := s.deps.Ops.ShowSite(ctx, env, site)
-	if err == nil {
-		status.BackupEnabled = detail.Backup.Enabled
-		status.LastBackup = detail.Backup.LastSuccess
-
-		if detail.Release != nil {
-			if commit, ok := ops.ParseDescription(detail.Release.Description); ok {
-				status.Commit, status.Dirty = ui.ShortSHA(commit.SHA), commit.Dirty
-			}
-		}
-	} else {
-		s.log.WarnContext(ctx, "reading a site", "env", env, "site", site, "error", err)
-	}
-
-	if engineering {
-		status.Drift = s.drift(c, env, site)
-	}
-
-	return render(c, http.StatusOK, ui.CellStatusFragment(s.lang(c), status))
-}
-
-// drift compares the site's release with the branch.
-func (s *Server) drift(c *echo.Context, env, site string) ui.Drift {
-	d, err := s.deps.Ops.Diff(c.Request().Context(), env, site)
-
-	switch {
-	case err != nil || d.Error != "":
-		return ui.DriftUnknown
-	case !d.Installed:
-		return ui.DriftNotInstalled
-	case d.Changed:
-		return ui.DriftChanged
-	default:
-		return ui.DriftNone
-	}
-}
-
 // sitePage renders one site in one environment.
 func (s *Server) sitePage(c *echo.Context) error {
 	env, site := c.Param("env"), c.Param("site")
@@ -291,22 +95,32 @@ func (s *Server) sitePage(c *echo.Context) error {
 	sess := sessionOf(c)
 	ctx := c.Request().Context()
 
-	environment, _, err := s.environment(env)
+	envs, err := s.deps.Ops.Environments()
 	if err != nil {
 		return err
 	}
 
+	order := liveOrder(envs)
+	i := slices.IndexFunc(order, func(e orderedEnv) bool { return e.Name == env })
+	environment := order[i] // viewable found it
+
 	perms := s.perms(sess, env, site)
 	view := ui.SiteView{
-		Env: env, Site: site, Host: "", URL: "", Image: "", Tag: "",
+		Env: env, Site: site, Live: environment.live, Host: "", URL: "", Health: ui.HealthUnknown, Image: "", Tag: "",
 		PromoteFrom: "", FromTag: "", CanPublish: false,
 		Perms: perms, Engineering: perms.Deploy, Running: "", Unavailable: false, Ready: "",
-		Pods: nil, Release: nil, Volume: ui.Volume{Claim: "", Found: false, Phase: "", Capacity: "", StorageClass: ""},
-		Backup: ui.BackupState{Enabled: false, LastSuccess: nil}, CSRF: sess.CSRF,
+		Pods: nil, Release: nil, Releases: nil,
+		Volume: ui.Volume{Claim: "", Found: false, Phase: "", Capacity: "", StorageClass: ""},
+		Backup: ui.BackupState{Enabled: false, LastSuccess: nil}, Others: nil, CSRF: sess.CSRF, Now: s.now(),
 	}
 
 	if running, ok := s.deps.Locks.Running(env, site); ok {
 		view.Running = ui.Action(running)
+	}
+
+	view.Others, err = s.otherEnvironments(sess, order, env, site)
+	if err != nil {
+		return err
 	}
 
 	detail, err := s.deps.Ops.ShowSite(ctx, env, site)
@@ -322,20 +136,40 @@ func (s *Server) sitePage(c *echo.Context) error {
 		if err == nil {
 			view.PromoteFrom = environment.PromoteFrom
 			view.FromTag = plan.Target.Tag
-			view.CanPublish = perms.Deploy
+			view.CanPublish = perms.Deploy && plan.Changed()
 		}
 	}
 
 	return render(c, http.StatusOK, ui.SitePage(s.page(c, site+" · "+env), view))
 }
 
+// otherEnvironments are the environments other than env that have the site
+// and that the person may see, in the order of the home page.
+func (s *Server) otherEnvironments(sess session.Session, order []orderedEnv, env, site string) ([]ui.EnvLink, error) {
+	var others []ui.EnvLink
+
+	for _, e := range order {
+		if e.Name == env || !s.allows(sess, e.Name, site, access.View) {
+			continue
+		}
+
+		sites, err := s.deps.Ops.Sites(e.Name)
+		if err != nil {
+			return nil, err
+		}
+
+		if slices.Contains(sites, site) {
+			others = append(others, ui.EnvLink{Env: e.Name, Live: e.live})
+		}
+	}
+
+	return others, nil
+}
+
 // fillSite copies what ShowSite read into the site page.
 func fillSite(view *ui.SiteView, d ops.SiteDetail) {
 	view.Host = d.Host
-	if d.Host != "" {
-		view.URL = "https://" + d.Host
-	}
-
+	view.URL = hostURL(d.Host)
 	view.Image = d.Image
 	view.Tag = imageTag(d.Image)
 	view.Volume = ui.Volume{
@@ -354,6 +188,7 @@ func fillSite(view *ui.SiteView, d ops.SiteDetail) {
 	}
 
 	view.Ready = strconv.Itoa(ready) + "/" + strconv.Itoa(len(d.Pods))
+	view.Health = ui.HealthOf(view.Ready)
 
 	if d.Release != nil {
 		commit, _ := ops.ParseDescription(d.Release.Description)
@@ -361,6 +196,12 @@ func fillSite(view *ui.SiteView, d ops.SiteDetail) {
 			Revision: d.Release.Revision, Status: d.Release.Status, Updated: d.Release.Updated,
 			Commit: ui.ShortSHA(commit.SHA), Dirty: commit.Dirty,
 		}
+		// ShowSite reads the installed release only, so the history starts
+		// with it; the author of its commit is not known here.
+		view.Releases = []ui.ReleaseEntry{{
+			Revision: view.Release.Revision, Updated: view.Release.Updated, Status: view.Release.Status,
+			Commit: view.Release.Commit, Author: "",
+		}}
 	}
 }
 
@@ -431,7 +272,7 @@ func (s *Server) history(c *echo.Context, env, site string) ([]ui.HistoryEntry, 
 	return entries, nil
 }
 
-// backupsFragment lists the site's backups.
+// backupsFragment lists the site's backups in words, for its page.
 func (s *Server) backupsFragment(c *echo.Context) error {
 	env, site := c.Param("env"), c.Param("site")
 	err := s.viewable(c, env, site)
@@ -439,12 +280,32 @@ func (s *Server) backupsFragment(c *echo.Context) error {
 		return err
 	}
 
-	sess := sessionOf(c)
-	ctx := c.Request().Context()
-	view := ui.BackupsView{
-		Env: env, Site: site, CSRF: sess.CSRF, CanRestore: s.allows(sess, env, site, access.Restore),
-		Off: false, Failed: false, Rows: nil,
+	return render(c, http.StatusOK, ui.BackupsFragment(s.lang(c), s.backups(c, env, site)))
+}
+
+// restorePage lists the backups to restore, for people with restore.
+func (s *Server) restorePage(c *echo.Context) error {
+	env, site := c.Param("env"), c.Param("site")
+	if !s.allows(sessionOf(c), env, site, access.Restore) {
+		return echo.ErrForbidden
 	}
+
+	err := s.viewable(c, env, site)
+	if err != nil {
+		return err
+	}
+
+	l := s.lang(c)
+	view := ui.RestoreView{Env: env, Site: site, CSRF: sessionOf(c).CSRF, Backups: s.backups(c, env, site)}
+
+	return render(c, http.StatusOK, ui.RestorePage(s.page(c, l.T(i18n.RestoreTitle, site)), view))
+}
+
+// backups reads a site's backups. A site whose backups are off has nothing
+// to list, so a bucket the server cannot read is then no failure.
+func (s *Server) backups(c *echo.Context, env, site string) ui.BackupsView {
+	ctx := c.Request().Context()
+	view := ui.BackupsView{Off: false, Failed: false, Rows: nil, Now: s.now()}
 
 	enabled, err := s.deps.Ops.BackupsEnabled(env, site)
 	view.Off = err == nil && !enabled
@@ -470,5 +331,5 @@ func (s *Server) backupsFragment(c *echo.Context) error {
 		})
 	}
 
-	return render(c, http.StatusOK, ui.BackupsFragment(s.lang(c), view))
+	return view
 }

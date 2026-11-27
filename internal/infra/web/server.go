@@ -162,17 +162,18 @@ func (s *Server) routes() {
 	e.POST("/hooks/git", s.hook)
 
 	g := e.Group("", s.requireSession)
-	g.GET("/", s.fleet)
+	g.GET("/", s.home)
 	g.POST("/lang", s.setLang)
 	g.GET("/tasks/:id", s.taskPage)
 	g.GET("/events", s.events)
 
 	site := g.Group("/sites/:env/:site")
 	site.GET("", s.sitePage)
-	site.GET("/status", s.statusFragment)
+	site.GET("/status", s.backupStatus)
 	site.GET("/diff", s.diffFragment)
 	site.GET("/history", s.historyFragment)
 	site.GET("/backups", s.backupsFragment)
+	site.GET("/restore", s.restorePage)
 	site.POST("/deploy", s.deploy)
 	site.POST("/promote", s.promote)
 	site.POST("/admin", s.admin)
@@ -285,19 +286,32 @@ func (s *Server) message(
 	c *echo.Context, status int, title, text i18n.Key, bad bool, link string, linkText i18n.Key,
 ) error {
 	l := s.lang(c)
-	m := ui.Message{Title: l.T(title), Text: l.T(text), Bad: bad, Link: link, LinkText: ""}
+	m := ui.Message{
+		Title: l.T(title), Text: l.T(text), Hint: "", Bad: bad, Link: link, LinkText: "", Support: s.deps.Support,
+	}
 
 	if link != "" {
 		m.LinkText = l.T(linkText)
 	}
 
+	if text == i18n.Forbidden {
+		m.Hint = l.T(i18n.AskForAccess)
+	}
+
 	return render(c, status, ui.MessagePage(s.page(c, m.Title), m))
 }
 
-// refuse renders a refusal with a text already in the person's language.
+// refuse renders a refusal with a text already in the person's language;
+// a refusal for want of a permission also says whom to ask.
 func (s *Server) refuse(c *echo.Context, status int, text string, back string) error {
 	l := s.lang(c)
-	m := ui.Message{Title: l.T(i18n.RefusedTitle), Text: text, Bad: true, Link: back, LinkText: ""}
+	m := ui.Message{
+		Title: l.T(i18n.RefusedTitle), Text: text, Hint: "", Bad: true, Link: back, LinkText: "", Support: s.deps.Support,
+	}
+
+	if status == http.StatusForbidden && text == l.T(i18n.Forbidden) {
+		m.Hint = l.T(i18n.AskForAccess)
+	}
 
 	if back != "" {
 		m.LinkText = l.T(i18n.Back)
@@ -336,7 +350,7 @@ func (s *Server) handleError(c *echo.Context, err error) {
 		s.log.ErrorContext(c.Request().Context(), "request failed", "path", c.Request().URL.Path, "error", err)
 	}
 
-	rerr := s.message(c, status, title, text, true, "/", i18n.SitesTitle)
+	rerr := s.message(c, status, title, text, true, "/", i18n.GoHome)
 	if rerr != nil {
 		s.log.WarnContext(c.Request().Context(), "writing the error page", "error", rerr)
 	}

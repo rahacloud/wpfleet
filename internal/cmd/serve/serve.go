@@ -27,6 +27,7 @@ import (
 	"github.com/rahacloud/wpfleet/internal/infra/oidc"
 	"github.com/rahacloud/wpfleet/internal/infra/session"
 	"github.com/rahacloud/wpfleet/internal/infra/web"
+	"github.com/rahacloud/wpfleet/internal/infra/web/ui"
 	"github.com/rahacloud/wpfleet/internal/ops"
 )
 
@@ -170,6 +171,7 @@ func run(ctx context.Context, log *slog.Logger, o options) error {
 		Committer:     gitrepo.Signature{Name: srv.Git.Committer.Name, Email: srv.Git.Committer.Email},
 		VerifyWebhook: webhookVerifier(secrets.GitWebhookSecret),
 		Now:           nil,
+		Support:       ui.Support{Email: "", URL: ""},
 	})
 	if err != nil {
 		return err

@@ -1,0 +1,59 @@
+package ui
+
+import "github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
+
+// RestorePage restores a backup: it says what a restore replaces, lists the
+// backups in plain words to choose from, and asks for the site's name to be
+// typed before it starts. The server checks the name again.
+templ RestorePage(p Page, v RestoreView) {
+	@Layout(p) {
+		<h1>{ p.L.T(i18n.RestoreTitle, v.Site) }</h1>
+		<section class="wf-card wf-stack wf-page-restore-intro">
+			<p>{ p.L.T(i18n.RestoreIntro) }</p>
+			<p><span class="wf-badge wf-badge-warn">{ p.L.T(i18n.RestoreWarning) }</span></p>
+		</section>
+		switch  {
+			case v.Backups.Failed:
+				<p><span class="wf-badge wf-badge-bad">{ p.L.T(i18n.BackupsUnavailable) }</span></p>
+			case !v.Restorable():
+				<p class="wf-muted">{ p.L.T(i18n.NoRestorable) }</p>
+			default:
+				@restoreForm(p.L, v)
+		}
+		<p><a href={ templ.SafeURL(SitePath(v.Env, v.Site)) }>{ p.L.T(i18n.Cancel) }</a></p>
+	}
+}
+
+// restoreForm is the choice of backup, the uploads, and the confirmation.
+templ restoreForm(l i18n.Lang, v RestoreView) {
+	<form class="wf-card wf-stack wf-page-restore" method="post" action={ templ.SafeURL(ActionPath(v.Env, v.Site, "restore")) }>
+		<input type="hidden" name="csrf" value={ v.CSRF }/>
+		<fieldset class="wf-stack">
+			<legend>{ l.T(i18n.ChooseBackup) }</legend>
+			for _, r := range v.Backups.Rows {
+				if r.HasDump {
+					<div class="wf-row">
+						<input type="radio" id={ stampID(r.Stamp) } name="stamp" value={ r.Stamp } required/>
+						<label for={ stampID(r.Stamp) }>
+							@backupLine(l, r, v.Backups.Now)
+						</label>
+					</div>
+				}
+			}
+		</fieldset>
+		<div class="wf-stack">
+			<div class="wf-row">
+				<input type="checkbox" id="restore-uploads" name="uploads" value="1" aria-describedby="restore-uploads-help"/>
+				<label for="restore-uploads">{ l.T(i18n.RestoreUploads) }</label>
+			</div>
+			<p id="restore-uploads-help" class="wf-help">{ l.T(i18n.RestoreUploadsHelp) }</p>
+		</div>
+		<div class="wf-stack">
+			<label for="restore-confirm">{ l.T(i18n.RestoreConfirmLabel, v.Site) }</label>
+			<input id="restore-confirm" type="text" name="confirm" required autocomplete="off" spellcheck="false" dir="ltr" pattern={ v.Site }/>
+		</div>
+		<div class="wf-row">
+			<button type="submit" class="wf-btn wf-btn-danger" data-action="restore">{ l.T(i18n.RestoreSubmit) }</button>
+		</div>
+	</form>
+}

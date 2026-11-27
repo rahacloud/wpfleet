@@ -89,23 +89,24 @@ type taskEvent struct {
 	ok   bool
 }
 
-// render is the event's HTML in l, with a failure's error when engineering
+// render is the event's HTML in l. The result leads back to the site at
+// back and names support; a failure's error is in it only when engineering
 // (the viewer has deploy).
 //
 //nolint:ireturn // each kind renders another component
-func (e taskEvent) render(l i18n.Lang, engineering bool) templ.Component {
+func (e taskEvent) render(l i18n.Lang, engineering bool, back string, support ui.Support) templ.Component {
 	switch e.kind {
 	case eventLog:
 		return ui.TaskText(e.text)
 	case eventDone:
-		text := l.T(e.key, in(l, e.args)...)
-		if !e.ok && engineering && e.text != "" {
-			text += " " + l.T(i18n.FailureDetail, e.text)
+		o := ui.TaskOutcome{OK: e.ok, Text: l.T(e.key, in(l, e.args)...), Detail: "", Back: back, Support: support}
+		if !e.ok && engineering {
+			o.Detail = e.text
 		}
 
-		return ui.TaskResult(e.ok, text)
+		return ui.TaskResult(l, o)
 	default:
-		return ui.TaskText(l.T(e.key, in(l, e.args)...) + "\n")
+		return ui.TaskStep(l.T(e.key, in(l, e.args)...))
 	}
 }
 
@@ -352,6 +353,7 @@ func (s *Server) events(c *echo.Context) error {
 	ctx := c.Request().Context()
 	l := s.lang(c)
 	engineering := s.allows(sessionOf(c), t.env, t.site, access.Deploy)
+	back := ui.SitePath(t.env, t.site)
 	w := c.Response()
 	rc := http.NewResponseController(w)
 
@@ -372,7 +374,7 @@ func (s *Server) events(c *echo.Context) error {
 		evs, done, changed := t.since(sent)
 
 		for _, e := range evs {
-			err := writeEvent(ctx, w, e.kind, e.render(l, engineering))
+			err := writeEvent(ctx, w, e.kind, e.render(l, engineering, back, s.deps.Support))
 			if err != nil {
 				return nil // the browser went away; there is nobody to tell
 			}

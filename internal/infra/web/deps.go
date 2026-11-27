@@ -14,6 +14,7 @@ import (
 	"github.com/rahacloud/wpfleet/internal/domain/fleet"
 	"github.com/rahacloud/wpfleet/internal/infra/gitrepo"
 	"github.com/rahacloud/wpfleet/internal/infra/session"
+	"github.com/rahacloud/wpfleet/internal/infra/web/ui"
 	"github.com/rahacloud/wpfleet/internal/ops"
 )
 
@@ -142,7 +143,7 @@ type Locker interface {
 type Auditor func(ctx context.Context, r audit.Record)
 
 // Deps are what the server is built from. Every field but Logger,
-// VerifyWebhook and Now is required.
+// VerifyWebhook, Now and Support is required.
 type Deps struct {
 	// Auth signs people in.
 	Auth Authenticator
@@ -170,6 +171,9 @@ type Deps struct {
 	VerifyWebhook func(body []byte, signature string) bool
 	// Now is the clock; nil uses time.Now.
 	Now func() time.Time
+	// Support is whom the pages tell people to ask for help; empty fields
+	// leave it out.
+	Support ui.Support
 }
 
 // ErrMissingDep is returned by New for a required dependency left nil.

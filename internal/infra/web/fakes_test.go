@@ -321,7 +321,7 @@ func newFakeOps() *fakeOps {
 			envProd:    {siteBlog},
 		},
 		tags: map[string]string{
-			envDev:     "20261127-120000",
+			envDev:     tagNew,
 			envStaging: tagOld,
 			envProd:    tagOld,
 		},
@@ -337,7 +337,7 @@ func newFakeOps() *fakeOps {
 		plan: fleet.PromotionPlan{
 			Site: siteBlog, From: envDev, To: envStaging,
 			Current: fleet.ImageRef{Repository: "registry.example.com/sites/blog", Tag: tagOld, Digest: ""},
-			Target:  fleet.ImageRef{Repository: "registry.example.com/sites/blog", Tag: "20261127-120000", Digest: ""},
+			Target:  fleet.ImageRef{Repository: "registry.example.com/sites/blog", Tag: tagNew, Digest: ""},
 		},
 	}
 }
