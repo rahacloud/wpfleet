@@ -3,6 +3,7 @@ package web_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -274,6 +275,7 @@ type fakeOps struct {
 	deployErr string
 	backupLog string
 	envErr    error
+	block     bool
 	plan      fleet.PromotionPlan
 }
 
@@ -291,6 +293,7 @@ func newFakeOps() *fakeOps {
 		deployErr: "",
 		backupLog: "dumping <database>\n",
 		envErr:    nil,
+		block:     false,
 		envs: []web.Environment{
 			{Name: envDev, PromoteFrom: ""},
 			{Name: envStaging, PromoteFrom: envDev},
@@ -420,8 +423,17 @@ func (o *fakeOps) RunBackup(_ context.Context, env, site string, progress ops.Pr
 	return ops.BackupRun{Job: job, Namespace: "wp-" + env}, nil
 }
 
-func (o *fakeOps) Restore(_ context.Context, env, site, stamp string, uploads bool, _ ops.Progress) error {
+func (o *fakeOps) Restore(ctx context.Context, env, site, stamp string, uploads bool, _ ops.Progress) error {
 	o.record("Restore", env, site, stamp, strconv.FormatBool(uploads))
+
+	if o.block {
+		<-ctx.Done()
+		// A real restore takes a moment to notice and clean up, which is
+		// when an exiting process used to lose its audit record.
+		time.Sleep(50 * time.Millisecond)
+
+		return fmt.Errorf("restoring: %w", ctx.Err())
+	}
 
 	return nil
 }
@@ -472,6 +484,19 @@ func (a *auditLog) all() []audit.Record {
 	defer a.mu.Unlock()
 
 	return slices.Clone(a.records)
+}
+
+// finished returns the end record of the one action that ran, after
+// checking that its started record came first.
+func (a *auditLog) finished(tb testing.TB) audit.Record {
+	tb.Helper()
+
+	records := a.all()
+	testutil.Equal(tb, "audit records", len(records), 2)
+	testutil.Equal(tb, "first record", records[0].Result, audit.ResultStarted)
+	testutil.Equal(tb, "same action", records[0].Action, records[1].Action)
+
+	return records[1]
 }
 
 // only returns the one record written, stopping the test otherwise.

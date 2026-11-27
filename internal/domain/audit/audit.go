@@ -24,6 +24,10 @@ const (
 	ResultFailed = "failed"
 	// ResultBusy is an action refused because another one runs on the site.
 	ResultBusy = "busy"
+	// ResultStarted is an action that was accepted and began to run in the
+	// background. Its end is a second record with ResultOK or ResultFailed,
+	// so an action cut off by a killed process still left a line.
+	ResultStarted = "started"
 )
 
 // Record is one audited action.

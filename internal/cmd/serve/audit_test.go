@@ -169,3 +169,24 @@ func TestEventNoteFitsTheLimit(t *testing.T) {
 	testutil.True(t, "valid UTF-8", strings.ToValidUTF8(note, "?") == note)
 	testutil.Contains(t, "starts with who", note, "restore by editor@example.com: failed")
 }
+
+// Once the server waits for the Events in flight, a late record is still
+// written as a line but starts no Event, which would race the wait.
+func TestAuditAfterWaitWritesOnlyTheLine(t *testing.T) {
+	t.Parallel()
+
+	cs := newFakeCluster()
+
+	var out bytes.Buffer
+
+	a := newTestAuditor(cs, &out)
+	a.Wait()
+	a.Write(t.Context(), record("deploy", audit.ResultFailed, true))
+	a.Wait()
+
+	testutil.Contains(t, "audit line", out.String(), `"audit":true`, "the server is stopping")
+
+	events, err := listEvents(t, cs)
+	testutil.NoError(t, err)
+	testutil.Equal(t, "events", len(events.Items), 0)
+}

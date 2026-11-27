@@ -39,10 +39,14 @@ func (s *Server) auditTarget(ctx context.Context, t target, result, detail strin
 	s.audit(ctx, rec)
 }
 
-// audit writes a record and counts it.
+// audit writes a record and counts it. A started action is counted once,
+// when it ends, so wpfleet_actions_total never counts an action twice.
 func (s *Server) audit(ctx context.Context, r audit.Record) {
 	r.Time = s.now()
-	s.metrics.actions.WithLabelValues(r.Action, r.Result).Inc()
+	if r.Result != audit.ResultStarted {
+		s.metrics.actions.WithLabelValues(r.Action, r.Result).Inc()
+	}
+
 	s.deps.Audit(ctx, r)
 }
 

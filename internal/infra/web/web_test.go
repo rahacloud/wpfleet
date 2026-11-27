@@ -491,7 +491,7 @@ func TestDeployStreamsProgressAndAudits(t *testing.T) {
 	testutil.DeepEqual(t, "commit", calls[0].args, []string{h.repo.head})
 	testutil.Equal(t, "synced first", h.repo.syncCount(), 1)
 
-	rec := h.audit.only(t)
+	rec := h.audit.finished(t)
 	testutil.Equal(t, "result", rec.Result, "ok")
 	testutil.Equal(t, "commit", rec.Commit, h.repo.head)
 
@@ -513,7 +513,7 @@ func TestFailedDeployIsAuditedAsFailed(t *testing.T) {
 
 	h.wait()
 
-	rec := h.audit.only(t)
+	rec := h.audit.finished(t)
 	testutil.Equal(t, "result", rec.Result, "failed")
 	testutil.Contains(t, "detail", rec.Detail, "timed out")
 }
@@ -570,7 +570,7 @@ func TestPromoteCommitsAsThePersonAndDeploys(t *testing.T) {
 	deploys := h.ops.called("Deploy")
 	testutil.DeepEqual(t, "deployed the new commit", deploys[0].args, []string{h.repo.head})
 
-	rec := h.audit.only(t)
+	rec := h.audit.finished(t)
 	testutil.Equal(t, "action", rec.Action, "promote")
 	testutil.Equal(t, "commit", rec.Commit, h.repo.head)
 }
@@ -662,6 +662,33 @@ func TestRestoreNeedsTheSiteName(t *testing.T) {
 
 	calls := h.ops.called("Restore")
 	testutil.DeepEqual(t, "restore", calls[0].args, []string{"20261126T020000Z", "true"})
+}
+
+// An action cut off by a stop past the shutdown timeout is canceled, and
+// Shutdown waits for it to audit its failure before the process exits.
+func TestShutdownAuditsACanceledAction(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.ops.block = true
+	cookie, csrf := h.as(platform(), "")
+
+	w := h.request(http.MethodPost, "/sites/staging/blog/restore",
+		form(csrf, "stamp", "20261126T020000Z", "confirm", siteBlog), cookie)
+	testutil.Equal(t, "status", w.Code, http.StatusSeeOther)
+
+	records := h.audit.all()
+	testutil.Equal(t, "audited when accepted", len(records), 1)
+	testutil.Equal(t, "started", records[0].Result, audit.ResultStarted)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	testutil.Error(t, h.server.Shutdown(ctx), "the timeout")
+
+	rec := h.audit.finished(t)
+	testutil.Equal(t, "result", rec.Result, audit.ResultFailed)
+	testutil.Contains(t, "detail", rec.Detail, context.Canceled.Error())
 }
 
 func TestBackupStreamsLogsEscaped(t *testing.T) {

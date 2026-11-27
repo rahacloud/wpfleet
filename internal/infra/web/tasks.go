@@ -193,14 +193,19 @@ type outcome struct {
 
 // start runs work in the background as a task of the person in sess, under
 // the lock already taken, and redirects the browser to its progress page.
-// When work ends the lock is released, the result is written to the task
-// and the action is audited.
+// The action is audited as started before it runs, so it is in the log even
+// when the process dies under it; when work ends the lock is released, the
+// result is written to the task and the action is audited again with it.
 func (s *Server) start(
 	c *echo.Context, sess session.Session, env, site string, action ui.Action,
 	release func(), work func(context.Context, *task) outcome,
 ) error {
 	t := s.tasks.create(env, site, action)
 	s.metrics.running.Inc()
+
+	started := s.record(sess, action, env, site)
+	started.Result, started.Detail = audit.ResultStarted, "task "+t.id
+	s.audit(c.Request().Context(), started)
 
 	s.wg.Go(func() {
 		defer s.metrics.running.Dec()

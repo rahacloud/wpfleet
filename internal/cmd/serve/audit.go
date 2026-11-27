@@ -47,18 +47,24 @@ type clusterFor func(env string) (kubernetes.Interface, string, error)
 // auditor writes every audit record as one JSON line and, for an allowed
 // action that ran on a site, records a Kubernetes Event on its Deployment so
 // kubectl describe shows it. Events are recorded in the background; wait
-// blocks until they are written.
+// blocks until they are written, and after it no Event is started, though
+// the line is still written.
 type auditor struct {
 	log      *slog.Logger
 	cluster  clusterFor
 	instance string
-	wg       sync.WaitGroup
+
+	// mu guards closed and orders every wg.Add before wait's wg.Wait, which
+	// sync.WaitGroup requires.
+	mu     sync.Mutex
+	closed bool
+	wg     sync.WaitGroup
 }
 
 // newAuditor writes to log and records Events through cluster, as instance
 // (the pod's name).
 func newAuditor(log *slog.Logger, cluster clusterFor, instance string) *auditor {
-	return &auditor{log: log, cluster: cluster, instance: instance, wg: sync.WaitGroup{}}
+	return &auditor{log: log, cluster: cluster, instance: instance, mu: sync.Mutex{}, closed: false, wg: sync.WaitGroup{}}
 }
 
 // write is the web.Auditor.
@@ -66,6 +72,15 @@ func (a *auditor) write(ctx context.Context, r audit.Record) {
 	a.log.LogAttrs(ctx, slog.LevelInfo, audit.Message, r.Attrs()...)
 
 	if !r.Allowed || !eventAction(r.Action) || (r.Result != audit.ResultOK && r.Result != audit.ResultFailed) {
+		return
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.closed {
+		a.log.WarnContext(ctx, "not recording a Kubernetes Event: the server is stopping", "env", r.Env, "site", r.Site)
+
 		return
 	}
 
@@ -80,8 +95,12 @@ func (a *auditor) write(ctx context.Context, r audit.Record) {
 	})
 }
 
-// wait blocks until the Events in flight are recorded.
+// wait blocks until the Events in flight are recorded and refuses new ones.
 func (a *auditor) wait() {
+	a.mu.Lock()
+	a.closed = true
+	a.mu.Unlock()
+
 	a.wg.Wait()
 }
 

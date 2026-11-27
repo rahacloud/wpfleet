@@ -108,8 +108,13 @@ func (s *Server) MetricsHandler() http.Handler {
 	return s.metrics.handler()
 }
 
+// cancelGrace is how long Shutdown still waits, once it canceled the running
+// actions, for them to see the cancellation and audit their failure.
+const cancelGrace = 10 * time.Second
+
 // Shutdown waits for the running actions and Git syncs to end. When ctx ends
-// first it cancels them and returns ctx's error.
+// first it cancels them, waits up to cancelGrace more so each writes its
+// failed audit record, and returns ctx's error.
 func (s *Server) Shutdown(ctx context.Context) error {
 	done := make(chan struct{})
 
@@ -125,6 +130,15 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		return nil
 	case <-ctx.Done():
 		s.cancel()
+
+		grace := time.NewTimer(cancelGrace)
+		defer grace.Stop()
+
+		select {
+		case <-done:
+		case <-grace.C:
+			s.log.Error("actions still running after they were canceled; their end is not audited")
+		}
 
 		return fmt.Errorf("waiting for the running actions: %w", ctx.Err())
 	}
