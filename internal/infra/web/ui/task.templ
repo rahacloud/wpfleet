@@ -1,0 +1,28 @@
+package ui
+
+import "github.com/rahacloud/wpfleet/internal/infra/web/ui/i18n"
+
+// TaskPage follows a running action over server-sent events: lines and Job
+// logs go into the log, and the result replaces "Working" when it ends.
+templ TaskPage(p Page, t TaskView) {
+	@Layout(p) {
+		<h1>{ p.L.T(i18n.TaskTitle, t.Action.Label(p.L), t.Site, t.Env) }</h1>
+		<div hx-ext="sse" sse-connect={ t.EventsURL } sse-close="done">
+			<pre id="log" sse-swap="line,log" hx-swap="beforeend"></pre>
+			<div id="result" sse-swap="done">
+				<p class="loading">{ p.L.T(i18n.Working) }</p>
+			</div>
+		</div>
+		<p><a href={ templ.SafeURL(SitePath(t.Env, t.Site)) }>{ p.L.T(i18n.Back) }</a></p>
+	}
+}
+
+// TaskText is a piece of the task's log, appended to it as it comes.
+templ TaskText(text string) {
+	<span>{ text }</span>
+}
+
+// TaskResult is how the task ended.
+templ TaskResult(ok bool, text string) {
+	<p class={ "message", templ.KV("bad", !ok) }>{ text }</p>
+}

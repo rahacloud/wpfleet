@@ -1,0 +1,271 @@
+/*
+ * wpfleet's stylesheet. It uses logical properties (inline-start, block-end)
+ * and text-align: start everywhere, so the same rules lay out English left to
+ * right and Persian right to left from the dir attribute alone.
+ */
+
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --text: #1d1d1b;
+  --muted: #5f5f5a;
+  --line: #deded8;
+  --accent: #1f5fbf;
+  --accent-text: #ffffff;
+  --ok: #1e7a3c;
+  --warn: #9a6200;
+  --bad: #b3261e;
+  --code-bg: #f0f0ec;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #161615;
+    --surface: #1f1f1e;
+    --text: #ecece8;
+    --muted: #a6a6a0;
+    --line: #3a3a37;
+    --accent: #6ea1f0;
+    --accent-text: #0d1a2e;
+    --ok: #6cc98a;
+    --warn: #e0b04f;
+    --bad: #f08b84;
+    --code-bg: #262624;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, "Segoe UI", Tahoma, "Noto Sans Arabic", "Noto Sans", sans-serif;
+}
+
+a {
+  color: var(--accent);
+}
+
+header.top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border-block-end: 1px solid var(--line);
+}
+
+header.top .brand {
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+  margin-inline-end: auto;
+}
+
+header.top form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0;
+}
+
+main {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 0 0 1rem;
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin: 2rem 0 0.75rem;
+}
+
+section.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-block-end: 1rem;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+th,
+td {
+  text-align: start;
+  padding: 0.5rem 0.75rem;
+  border-block-end: 1px solid var(--line);
+  vertical-align: top;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+dl.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.35rem 1.5rem;
+  margin: 0;
+}
+
+dl.facts dt {
+  color: var(--muted);
+}
+
+dl.facts dd {
+  margin: 0;
+}
+
+/* Names, tags and commits are Latin even on a Persian page. */
+.ltr {
+  direction: ltr;
+  unicode-bidi: isolate;
+}
+
+code,
+pre,
+.mono {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.875rem;
+}
+
+pre {
+  background: var(--code-bg);
+  border-radius: 6px;
+  padding: 0.75rem;
+  overflow: auto;
+  max-height: 32rem;
+  direction: ltr;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.warn {
+  color: var(--warn);
+}
+
+.bad {
+  color: var(--bad);
+}
+
+.badge {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  border: 1px solid currentColor;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+.actions form {
+  margin: 0;
+}
+
+button,
+.button {
+  font: inherit;
+  cursor: pointer;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+  padding: 0.45rem 0.9rem;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+button.danger {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+button.link {
+  border: 0;
+  background: none;
+  color: var(--accent);
+  padding: 0;
+}
+
+input[type="text"],
+select {
+  font: inherit;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+details.restore {
+  margin-block-start: 0.25rem;
+}
+
+details.restore form {
+  display: grid;
+  gap: 0.5rem;
+  margin-block-start: 0.5rem;
+  max-width: 28rem;
+}
+
+.message {
+  border-inline-start: 4px solid var(--accent);
+  background: var(--surface);
+  padding: 0.75rem 1rem;
+  border-radius: 4px;
+}
+
+.message.bad {
+  border-inline-start-color: var(--bad);
+}
+
+.cell .tag {
+  font-weight: 600;
+}
+
+.cell .meta {
+  font-size: 0.85rem;
+}
+
+.htmx-request.loading,
+.loading {
+  color: var(--muted);
+}
