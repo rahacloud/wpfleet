@@ -141,6 +141,9 @@ type PublishOffer struct {
 // BackupStatus is the last backup of a site, loaded into its card after the
 // page.
 type BackupStatus struct {
+	// Unknown says the site's state could not be read, so nothing is known
+	// about its backups.
+	Unknown bool
 	// Enabled says whether the site's backups are on.
 	Enabled bool
 	// Last is when a backup last succeeded, if ever.

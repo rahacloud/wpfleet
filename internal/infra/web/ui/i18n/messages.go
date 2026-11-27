@@ -390,6 +390,10 @@ const (
 	AskForAccess
 	// GoHome leads back to the home page.
 	GoHome
+	// BackupsUnknown says the state of a site's backups could not be read.
+	BackupsUnknown
+	// SiteUnavailable says the site's state could not be read, so the page shows less.
+	SiteUnavailable
 
 	// keyCount is the number of messages; it stays last.
 	keyCount
@@ -584,6 +588,8 @@ var english = [keyCount]string{
 	NextFailure:         "Try again in a few minutes. If it fails again, send the address of this page to your support team.",
 	AskForAccess:        "If you need to do this, ask your support team for access.",
 	GoHome:              "Back to your sites",
+	BackupsUnknown:      "Could not check the backups right now",
+	SiteUnavailable:     "The site's state could not be read right now. Try again in a minute.",
 }
 
 // persian is the Persian catalogue.
@@ -775,4 +781,6 @@ var persian = [keyCount]string{
 	NextFailure:         "چند دقیقهٔ دیگر دوباره تلاش کنید. اگر باز هم ناموفق بود، نشانی این صفحه را برای تیم پشتیبانی بفرستید.",
 	AskForAccess:        "اگر به این کار نیاز دارید، از تیم پشتیبانی دسترسی بخواهید.",
 	GoHome:              "بازگشت به سایت‌های شما",
+	BackupsUnknown:      "وضعیت پشتیبان‌ها الان خوانده نشد",
+	SiteUnavailable:     "وضعیت سایت الان خوانده نشد. یک دقیقهٔ دیگر دوباره امتحان کنید.",
 }

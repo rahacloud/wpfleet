@@ -251,13 +251,15 @@ func (s *Server) backupStatus(c *echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
-	status := ui.BackupStatus{Enabled: false, Last: nil, Now: s.now()}
+	status := ui.BackupStatus{Unknown: false, Enabled: false, Last: nil, Now: s.now()}
 
 	detail, err := s.deps.Ops.ShowSite(ctx, env, site)
 	if err == nil {
 		status.Enabled, status.Last = detail.Backup.Enabled, detail.Backup.LastSuccess
 	} else {
 		s.log.WarnContext(ctx, "reading a site", "env", env, "site", site, "error", err)
+
+		status.Unknown = true
 	}
 
 	return render(c, http.StatusOK, ui.BackupStatusFragment(s.lang(c), status))

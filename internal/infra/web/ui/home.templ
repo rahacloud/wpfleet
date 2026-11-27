@@ -152,7 +152,7 @@ templ healthLabel(l i18n.Lang, h Health) {
 // BackupStatusFragment is the last backup of a site, loaded into its card.
 templ BackupStatusFragment(l i18n.Lang, b BackupStatus) {
 	<p class="wf-muted wf-page-backup">
-		<span class={ backupBadge(b.Enabled, b.Last) }>{ backupText(l, b.Enabled, b.Last, b.Now) }</span>
+		<span class={ backupBadge(b.Unknown, b.Enabled, b.Last) }>{ backupText(l, b.Unknown, b.Enabled, b.Last, b.Now) }</span>
 	</p>
 }
 

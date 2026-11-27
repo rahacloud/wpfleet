@@ -608,6 +608,26 @@ func TestStatusFragment(t *testing.T) {
 	testutil.Equal(t, "stranger", w.Code, http.StatusForbidden)
 }
 
+// A cluster that cannot be read must not read as "Backups are off" or "no
+// address": the card and the site page say the state could not be read.
+func TestUnreadableClusterIsNotBackupsOff(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+	h.ops.showErr = errFake
+	cookie, _ := h.as(editor(), "")
+
+	fragment := h.request(http.MethodGet, "/sites/staging/blog/status", nil, cookie).Body.String()
+	testutil.Contains(t, "card", fragment, "Could not check the backups right now")
+	testutil.NotContains(t, "card", fragment, "Backups are off")
+
+	page := h.request(http.MethodGet, "/sites/staging/blog", nil, cookie).Body.String()
+	testutil.Contains(t, "site page", page, "The site&#39;s state could not be read right now.",
+		"Could not check the backups right now")
+	testutil.NotContains(t, "site page", page, "Backups are off")
+	testutil.NotContains(t, "site page", page, "This site has no address yet.")
+}
+
 func TestDeployStreamsProgressAndAudits(t *testing.T) {
 	t.Parallel()
 

@@ -868,3 +868,15 @@ details.restore form {
 .wf-page-running {
   border-inline-start: 4px solid var(--wf-primary);
 }
+
+/* A sentence that warns: a block with a border on its start side, never a
+ * badge, so a long sentence wraps on a narrow screen. */
+.wf-page-unavailable,
+.wf-page-restore-warning {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-inline-start: 4px solid var(--wf-warn);
+  border-radius: var(--wf-radius-small);
+  background: var(--wf-warn-bg);
+  color: var(--wf-text);
+}

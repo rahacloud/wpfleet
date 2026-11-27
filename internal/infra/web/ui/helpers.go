@@ -36,9 +36,12 @@ func readyOrUnknown(l i18n.Lang, ready string) string {
 }
 
 // backupText says in words when a backup last succeeded, that none did yet,
-// or that backups are off.
-func backupText(l i18n.Lang, enabled bool, last *time.Time, now time.Time) string {
+// that backups are off, or, when unknown, that their state could not be
+// read: a cluster that cannot be read must never read as "Backups are off".
+func backupText(l i18n.Lang, unknown, enabled bool, last *time.Time, now time.Time) string {
 	switch {
+	case unknown:
+		return l.T(i18n.BackupsUnknown)
 	case !enabled:
 		return l.T(i18n.BackupsOff)
 	case last == nil:
@@ -50,8 +53,8 @@ func backupText(l i18n.Lang, enabled bool, last *time.Time, now time.Time) strin
 
 // backupBadge is the badge class of a site's backup state: a site never
 // backed up while backups are on is a warning.
-func backupBadge(enabled bool, last *time.Time) string {
-	if enabled && last == nil {
+func backupBadge(unknown, enabled bool, last *time.Time) string {
+	if !unknown && enabled && last == nil {
 		return "wf-badge wf-badge-warn"
 	}
 

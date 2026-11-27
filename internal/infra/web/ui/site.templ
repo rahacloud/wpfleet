@@ -26,6 +26,9 @@ templ SitePage(p Page, s SiteView) {
 			<p class="wf-card wf-page-running" role="status">{ p.L.T(i18n.RunningNow, s.Running.Label(p.L)) }</p>
 		}
 		<section class="wf-card wf-stack wf-page-summary">
+			if s.Unavailable {
+				<p class="wf-page-unavailable" role="status">{ p.L.T(i18n.SiteUnavailable) }</p>
+			}
 			<dl class="wf-page-facts">
 				<dt>{ p.L.T(i18n.StatusLabel) }</dt>
 				<dd>
@@ -33,15 +36,18 @@ templ SitePage(p Page, s SiteView) {
 				</dd>
 				<dt>{ p.L.T(i18n.AddressLabel) }</dt>
 				<dd>
-					if s.Host != "" {
-						<span dir="ltr">{ s.Host }</span>
-					} else {
-						<span class="wf-muted">{ p.L.T(i18n.NoAddress) }</span>
+					switch  {
+						case s.Host != "":
+							<span dir="ltr">{ s.Host }</span>
+						case s.Unavailable:
+							<span class="wf-muted">{ p.L.T(i18n.Unknown) }</span>
+						default:
+							<span class="wf-muted">{ p.L.T(i18n.NoAddress) }</span>
 					}
 				</dd>
 				<dt>{ p.L.T(i18n.LastBackup) }</dt>
 				<dd>
-					<span class={ backupBadge(s.Backup.Enabled, s.Backup.LastSuccess) }>{ backupText(p.L, s.Backup.Enabled, s.Backup.LastSuccess, s.Now) }</span>
+					<span class={ backupBadge(s.Unavailable, s.Backup.Enabled, s.Backup.LastSuccess) }>{ backupText(p.L, s.Unavailable, s.Backup.Enabled, s.Backup.LastSuccess, s.Now) }</span>
 				</dd>
 			</dl>
 			if len(s.Others) > 0 {

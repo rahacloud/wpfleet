@@ -904,7 +904,7 @@ func BackupStatusFragment(l i18n.Lang, b BackupStatus) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var50 = []any{backupBadge(b.Enabled, b.Last)}
+			var templ_7745c5c3_Var50 = []any{backupBadge(b.Unknown, b.Enabled, b.Last)}
 			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_ElementWriter, templ_7745c5c3_Var50...)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
@@ -937,9 +937,9 @@ func BackupStatusFragment(l i18n.Lang, b BackupStatus) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var52 string
-		templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(backupText(l, b.Enabled, b.Last, b.Now))
+		templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(backupText(l, b.Unknown, b.Enabled, b.Last, b.Now))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 155, Col: 90}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/infra/web/ui/home.templ`, Line: 155, Col: 112}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 		if templ_7745c5c3_Err != nil {

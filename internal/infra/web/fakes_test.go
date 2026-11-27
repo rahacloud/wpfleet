@@ -298,6 +298,7 @@ type fakeOps struct {
 	backupLog  string
 	envErr     error
 	backupErr  error
+	showErr    error
 	block      bool
 	plan       fleet.PromotionPlan
 	applied    *fleet.PromotionPlan
@@ -320,6 +321,7 @@ func newFakeOps() *fakeOps {
 		backupLog:  "dumping <database>\n",
 		envErr:     nil,
 		backupErr:  nil,
+		showErr:    nil,
 		block:      false,
 		applied:    nil,
 		historyErr: nil,
@@ -389,6 +391,10 @@ func (o *fakeOps) ListSites(_ context.Context, envs []string) ([]ops.SiteRow, er
 
 func (o *fakeOps) ShowSite(_ context.Context, env, site string) (ops.SiteDetail, error) {
 	o.record("ShowSite", env, site)
+
+	if o.showErr != nil {
+		return ops.SiteDetail{}, o.showErr
+	}
 
 	last := time.Date(2026, 11, 26, 2, 0, 0, 0, time.UTC)
 	d := ops.SiteDetail{
