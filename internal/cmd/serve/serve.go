@@ -479,10 +479,15 @@ func checkBranding(dir string, b config.Branding) error {
 // reading the images from the newest snapshot of the fleet.
 func branding(b config.Branding, dir func() string) web.Branding {
 	return web.Branding{
-		Name: b.Name, Logo: b.Logo, LogoIncludesName: b.LogoIncludesName, Favicon: b.Favicon, Dir: dir,
-		PrimaryColor: b.PrimaryColor,
-		SupportURL: b.SupportURL, SupportEmail: b.SupportEmail,
-		Welcome: map[i18n.Lang]string{i18n.English: b.Welcome.EN, i18n.Persian: b.Welcome.FA},
+		Name:             b.Name,
+		Logo:             b.Logo,
+		LogoIncludesName: b.LogoIncludesName,
+		Favicon:          b.Favicon,
+		Dir:              dir,
+		PrimaryColor:     b.PrimaryColor,
+		SupportURL:       b.SupportURL,
+		SupportEmail:     b.SupportEmail,
+		Welcome:          map[i18n.Lang]string{i18n.English: b.Welcome.EN, i18n.Persian: b.Welcome.FA},
 	}
 }
 

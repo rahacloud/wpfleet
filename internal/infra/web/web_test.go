@@ -542,7 +542,9 @@ func TestEnvironmentLabels(t *testing.T) {
 	t.Parallel()
 
 	h := newHarness(t)
-	label := func(en, fa string) map[i18n.Lang]string { return map[i18n.Lang]string{i18n.English: en, i18n.Persian: fa} }
+	label := func(en, fa string) map[i18n.Lang]string {
+		return map[i18n.Lang]string{i18n.English: en, i18n.Persian: fa}
+	}
 	h.ops.envs = []web.Environment{
 		{Name: envDev, PromoteFrom: "", Label: label("Draft", "طرح")},
 		{Name: envStaging, PromoteFrom: envDev, Label: label("Preview", "آزمایشی")},
