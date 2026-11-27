@@ -2,7 +2,7 @@
 
 Manage a fleet of WordPress sites on Kubernetes from one Git repository: deploy every site with one shared Helm chart, build and promote site images from development to production, open a site's admin with a one-time link, and back sites up to S3 and restore them.
 
-> **Status: before its first release.** Every command in [docs/design.md](docs/design.md) is built and covered by tests against fakes. `sites list`, `deploy`, `diff`, `promote` and `admin` have run against a real cluster (a local kind cluster, 2026-11-27); `build`, `backup` and `copy` have not yet run against a real registry or bucket. `serve` is tested end to end against a fake OIDC provider and a local Git repository, but has not yet run in a cluster or been opened in a real browser. Expect rough edges until v0.1. `docs/design.md` is the contract the commands are built against.
+> **Status: before its first release.** Every command in [docs/design.md](docs/design.md) is built and covered by tests against fakes. `sites list`, `deploy`, `diff`, `promote` and `admin` have run against a real cluster (a local kind cluster, 2026-11-27); `build`, `backup` and `copy` have not yet run against a real registry or bucket. `serve` has run in the same kind cluster from its chart, with Dex for sign-in and Gitea as the fleet repository, and was driven in headless Chromium (2026-11-27); backups through it have not run, since that cluster has no bucket. Expect rough edges until v0.1. `docs/design.md` is the contract the commands are built against.
 
 ## How it works
 
@@ -43,6 +43,22 @@ wpfleet serve --config wpfleet-server.yaml --data /var/lib/wpfleet
 ```
 
 The configuration file holds the `server` section of [docs/design.md](docs/design.md): the public URL, the fleet repository, the OIDC provider and the access rules. The server refuses to start without the OIDC settings, the session key and at least one access rule. Secrets come only from the environment: `WPFLEET_SESSION_KEY` (32 random bytes in base64, `openssl rand -base64 32`), `WPFLEET_OIDC_CLIENT_SECRET`, `WPFLEET_GIT_SSH_KEY` or `WPFLEET_GIT_TOKEN`, `WPFLEET_GIT_WEBHOOK_SECRET` for push webhooks, and the S3 keys for backups.
+
+## The web UI for the people who run the sites
+
+Editors and marketing teams do not need a terminal. They open the wpfleet address, sign in with the company account, and see only the sites their team looks after. "Open admin" takes them straight into the WordPress dashboard, without a WordPress password; the link is made for that one click and works once.
+
+![Signing in as an editor, opening the shop site, and landing in its WordPress dashboard with "Open admin"](docs/images/server-open-admin.gif)
+
+What a person sees depends on their team. An editor of the shop sees the shop and nothing else, and only the buttons their team may use; for this editor that is "Open admin":
+
+![The fleet page of an editor of the shop: one site, in development and staging](docs/images/server-editor-fleet.png)
+
+The platform team sees every site in every environment, which version each one runs, whether a newer one waits in the previous environment, and which Git commit is deployed. On a site's page they can publish the previous environment's version, deploy, and take a backup. The UI is also in Persian, right to left.
+
+![The fleet page of the platform team: three sites in development and staging, one with a newer version waiting in development](docs/images/server-fleet.png)
+
+Every action, allowed or refused, is written to the server's log with the person's email address, and a publication is a Git commit with that person as its author. The pictures come from the demo fleet on a local kind cluster, with invented users signed in through Dex (`sam@example.com` in the shop team, `alex@example.com` in the platform team) and an address bar drawn on them afterwards.
 
 ## Development
 
