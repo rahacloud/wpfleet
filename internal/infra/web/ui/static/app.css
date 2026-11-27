@@ -565,8 +565,15 @@ th {
     justify-content: flex-start;
   }
 
+  /* The name would push "Sign out" onto a row of its own; it stays for
+   * screen readers. */
   .wf-user {
-    max-inline-size: 10rem;
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .wf-row > .wf-btn,

@@ -113,6 +113,21 @@ func usedClasses(t *testing.T) map[string]bool {
 	return used
 }
 
+// TestPhoneHeaderHidesTheName keeps the person's name out of sight on a
+// phone, where beside "Need help?" and the language switch it pushed "Sign
+// out" onto a third row of the header, but not out of the page: it is
+// clipped like .wf-visually-hidden, so a screen reader still reads it.
+func TestPhoneHeaderHidesTheName(t *testing.T) {
+	t.Parallel()
+
+	_, narrow, ok := strings.Cut(stylesheet(t), "@media (max-width: 40rem) {\n  main {")
+	testutil.True(t, "the narrow-screen block", ok)
+
+	user := regexp.MustCompile(`(?s)\.wf-user \{[^}]*\}`).FindString(narrow)
+	testutil.Contains(t, "the name on a phone", user, "clip-path: inset(50%);", "position: absolute;")
+	testutil.NotContains(t, "not display: none", user, "display: none")
+}
+
 // TestThemeColorsMatchTheDomain keeps the page and card colors of app.css
 // equal to the ones the brand's shades are checked against.
 func TestThemeColorsMatchTheDomain(t *testing.T) {
