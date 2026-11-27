@@ -171,3 +171,18 @@ func TestDefaultWPCLIIsVerified(t *testing.T) {
 	testutil.Equal(t, "no sum", cfg.WPCLI.SHA512, "")
 	testutil.True(t, "opted out", cfg.WPCLI.AllowUnverified)
 }
+
+func TestReservedEnv(t *testing.T) {
+	t.Parallel()
+
+	for _, v := range []string{
+		"WPFLEET_FLEET", "WPFLEET_ENV", "WPFLEET_OUTPUT", "WPFLEET_VERBOSE", "WPFLEET_CONFIG", "WPFLEET_DATA",
+		"WPFLEET_S3_ACCESS_KEY_ID", "WPFLEET_SESSION_KEY", "WPFLEET_GIT_TOKEN",
+	} {
+		testutil.True(t, v+" is reserved", config.ReservedEnv(v))
+	}
+
+	for _, v := range []string{"WPFLEET_REGISTRY", "WPFLEET_SERVER__PUBLICURL", "OUTPUT", "HOME"} {
+		testutil.True(t, v+" is not reserved", !config.ReservedEnv(v))
+	}
+}

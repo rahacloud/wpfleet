@@ -19,10 +19,14 @@ type FleetOps struct {
 	Dir func() string
 	// Getenv reads the S3 keys; nil uses os.Getenv.
 	Getenv func(string) string
+	// Authors finds the authors of the commits in the release history, in
+	// the clone; nil looks in the Git repository holding Dir, which a
+	// snapshot does not have.
+	Authors ops.CommitAuthors
 }
 
 // Interface check.
-var _ Operations = FleetOps{Dir: nil, Getenv: nil}
+var _ Operations = FleetOps{Dir: nil, Getenv: nil, Authors: nil}
 
 // Environments lists the fleet's environments.
 func (o FleetOps) Environments() ([]Environment, error) {
@@ -93,6 +97,17 @@ func (o FleetOps) ShowSite(ctx context.Context, env, site string) (ops.SiteDetai
 	}
 
 	return ops.ShowSite(ctx, e, s, ops.ShowOptions{Cluster: nil, Releases: nil})
+}
+
+// History reads the newest n revisions of a site's release, with their
+// commits and authors.
+func (o FleetOps) History(ctx context.Context, env, site string, n int) ([]ops.Revision, error) {
+	e, s, err := o.site(env, site)
+	if err != nil {
+		return nil, err
+	}
+
+	return ops.History(ctx, e, s, n, ops.HistoryOptions{Releases: nil, Authors: o.Authors})
 }
 
 // Diff compares a site's release with what the fleet renders.

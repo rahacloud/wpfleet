@@ -440,3 +440,23 @@ func TestFileLog(t *testing.T) {
 	_, err = r.FileLog(t.Context(), "../x", 10)
 	testutil.ErrorIs(t, err, gitrepo.ErrOutsideClone)
 }
+
+func TestCommitAuthor(t *testing.T) {
+	t.Parallel()
+
+	url := remote(t, site(tagOne))
+	r := open(t, url)
+
+	sha, err := r.Commit(t.Context(), "Promote blog to two", person, setTag("two"))
+	testutil.NoError(t, err)
+
+	author, err := r.CommitAuthor(t.Context(), sha)
+	testutil.NoError(t, err)
+	testutil.Equal(t, "author", author, person)
+
+	_, err = r.CommitAuthor(t.Context(), "0123456789abcdef0123456789abcdef01234567")
+	testutil.ErrorIs(t, err, gitrepo.ErrUnknownCommit)
+
+	_, err = r.CommitAuthor(t.Context(), sha[:8])
+	testutil.ErrorIs(t, err, gitrepo.ErrUnknownCommit)
+}

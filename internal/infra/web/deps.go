@@ -55,6 +55,9 @@ type Authorizer interface {
 	Allows(groups []string, env, site string, perm access.Permission) bool
 	// Permissions lists what groups may do on site in env.
 	Permissions(groups []string, env, site string) []access.Permission
+	// Any reports whether groups may see anything at all; a person for whom
+	// it is false is refused at sign-in.
+	Any(groups []string) bool
 }
 
 // Repo is the server's clone of the fleet repository.
@@ -99,6 +102,9 @@ type FleetReader interface {
 	ListSites(ctx context.Context, envs []string) ([]ops.SiteRow, error)
 	// ShowSite reads one site in detail.
 	ShowSite(ctx context.Context, env, site string) (ops.SiteDetail, error)
+	// History reads the newest n revisions of a site's release, newest
+	// first, with the commit and its author; none when it is not installed.
+	History(ctx context.Context, env, site string, n int) ([]ops.Revision, error)
 	// Diff compares a site's live release with what the clone renders.
 	Diff(ctx context.Context, env, site string) (ops.SiteDiff, error)
 	// ListBackups lists a site's backups.
@@ -130,13 +136,29 @@ type FleetRunner interface {
 	Restore(ctx context.Context, env, site, stamp string, uploads bool, progress ops.Progress) error
 }
 
-// Locker lets one operation run per site and environment; *ops.Locks
-// implements it.
+// Locker lets one operation run per site and environment, except those it
+// lets run together (Beside); *ops.Locks implements it.
 type Locker interface {
 	// TryLock takes the site for action, or returns a *ops.BusyError.
 	TryLock(env, site, action string) (func(), error)
 	// Running names the action holding the site.
 	Running(env, site string) (string, bool)
+	// Blocking names the action holding the site that TryLock would refuse
+	// action beside.
+	Blocking(env, site, action string) (string, bool)
+}
+
+// Beside is the rule the server's ops.Locks runs actions together by. "Open
+// admin" runs beside a deploy, a publish, a backup and other logins: it
+// only writes one short-lived option through wp-cli, which a deploy's new
+// pod and a backup's dump do not mind, and an editor should not wait
+// minutes for a deploy to open the admin. Nothing runs beside a restore,
+// which replaces the database the login writes into, and every other pair
+// stays one at a time.
+func Beside(running, wanted string) bool {
+	login, restore := string(ui.ActionLogin), string(ui.ActionRestore)
+
+	return (running == login || wanted == login) && running != restore && wanted != restore
 }
 
 // Auditor writes one audit record.

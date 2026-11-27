@@ -374,7 +374,7 @@ func (s *Server) events(c *echo.Context) error {
 		evs, done, changed := t.since(sent)
 
 		for _, e := range evs {
-			err := writeEvent(ctx, w, e.kind, e.render(l, engineering, back, s.deps.Support))
+			err := writeEvent(ctx, w, e.kind, e.render(l, engineering, back, s.support()))
 			if err != nil {
 				return nil // the browser went away; there is nobody to tell
 			}

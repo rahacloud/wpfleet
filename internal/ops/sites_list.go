@@ -23,6 +23,9 @@ type SiteRow struct {
 	Env string `json:"env"`
 	// Host is the site's canonical host, from its values.
 	Host string `json:"host"`
+	// URL is the site's address with the scheme its ingress serves (see
+	// SiteURL); empty when the values give no host.
+	URL string `json:"url"`
 	// Image is the image its values deploy.
 	Image string `json:"image"`
 	// Ready is ready pods out of running ones, e.g. 1/1, or unknown when
@@ -83,7 +86,7 @@ func listEnv(
 	rows := make([]SiteRow, 0, len(sites))
 
 	for _, site := range sites {
-		_, host, image, err := siteValues(defaults, site)
+		v, host, image, err := siteValues(defaults, site)
 		if err != nil {
 			return nil, err
 		}
@@ -101,7 +104,9 @@ func listEnv(
 			}
 		}
 
-		rows = append(rows, SiteRow{Site: site.Name, Env: env.Name, Host: host, Image: image.String(), Ready: ready})
+		rows = append(rows, SiteRow{
+			Site: site.Name, Env: env.Name, Host: host, URL: urlOf(v, host), Image: image.String(), Ready: ready,
+		})
 	}
 
 	return rows, nil

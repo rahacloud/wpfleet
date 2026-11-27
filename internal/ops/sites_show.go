@@ -35,6 +35,9 @@ type SiteDetail struct {
 	Namespace string `json:"namespace"`
 	// Host is the site's canonical host, from its values.
 	Host string `json:"host"`
+	// URL is the site's address with the scheme its ingress serves (see
+	// SiteURL); empty when the values give no host.
+	URL string `json:"url"`
 	// Image is the image its values deploy.
 	Image string `json:"image"`
 	// Release is what the release runs; nil when the site is not installed.
@@ -143,7 +146,7 @@ func ShowSite(ctx context.Context, env *Env, site fleet.Site, opts ShowOptions) 
 	}
 
 	return SiteDetail{
-		Site: site.Name, Env: env.Env.Name, Namespace: ns, Host: host, Image: image.String(),
+		Site: site.Name, Env: env.Env.Name, Namespace: ns, Host: host, URL: urlOf(v, host), Image: image.String(),
 		Release: rel, Pods: pods, Volume: vol, Backup: bak,
 	}, nil
 }

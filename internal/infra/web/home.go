@@ -2,6 +2,7 @@ package web
 
 import (
 	"cmp"
+	"context"
 	"net/http"
 	"slices"
 	"strings"
@@ -22,40 +23,60 @@ import (
 // by name or address.
 func (s *Server) home(c *echo.Context) error {
 	sess := sessionOf(c)
-	l := s.lang(c)
-	title := l.T(i18n.HomeTitle)
-	query := strings.TrimSpace(c.QueryParam("q"))
-	view := ui.HomeView{Cards: nil, Total: 0, Query: query, CSRF: sess.CSRF, Support: s.deps.Support}
+	title := s.lang(c).T(i18n.HomeTitle)
+
+	view, refused, err := s.homeView(c.Request().Context(), sess, strings.TrimSpace(c.QueryParam("q")))
+	if err != nil {
+		return err
+	}
+
+	if refused {
+		return s.message(c, http.StatusForbidden, i18n.NoAccessTitle, i18n.NoAccess, true, "", i18n.SignIn)
+	}
+
+	return render(c, http.StatusOK, ui.HomePage(s.page(c, title), view))
+}
+
+// homeView builds the home page for the person in sess, searched by query.
+// refused says the fleet has sites but the person may see none of them.
+func (s *Server) homeView(ctx context.Context, sess session.Session, query string) (ui.HomeView, bool, error) {
+	view := ui.HomeView{Cards: nil, Total: 0, Query: query, CSRF: sess.CSRF, Support: s.support()}
 
 	envs, err := s.deps.Ops.Environments()
 	if err != nil {
-		return err
+		return view, false, err
 	}
 
 	listed, anySite, err := s.visibleEnvironments(sess, envs)
 	if err != nil {
-		return err
+		return view, false, err
 	}
 
 	if len(listed) == 0 {
-		if anySite {
-			return s.message(c, http.StatusForbidden, i18n.NoAccessTitle, i18n.NoAccess, true, "", i18n.SignIn)
-		}
-
-		return render(c, http.StatusOK, ui.HomePage(s.page(c, title), view))
+		return view, anySite, nil
 	}
 
-	rows, err := s.deps.Ops.ListSites(c.Request().Context(), listed)
+	rows, err := s.deps.Ops.ListSites(ctx, listed)
 	if err != nil {
-		return err
+		return view, false, err
 	}
 
 	rows = slices.DeleteFunc(rows, func(r ops.SiteRow) bool { return !s.allows(sess, r.Env, r.Site, access.View) })
 	cards := siteCards(liveOrder(envs), rows, func(env, site string) ui.Perms { return s.perms(sess, env, site) })
+
+	for i := range cards {
+		for j := range cards[i].Envs {
+			e := &cards[i].Envs[j]
+			if e.CanLogin {
+				e.AdminBlockedBy = s.adminBlockedBy(e.Env, cards[i].Site)
+			}
+		}
+	}
+
 	view.Total = len(cards)
 	view.Cards = filterCards(cards, query)
 
-	return render(c, http.StatusOK, ui.HomePage(s.page(c, title), view))
+	return view, false, nil
 }
 
 // visibleEnvironments finds the environments with a site the person may
@@ -166,7 +187,8 @@ func siteCards(order []orderedEnv, rows []ops.SiteRow, perms func(env, site stri
 
 			p := perms(e.Name, name)
 			card.Envs = append(card.Envs, ui.CardEnv{
-				Env: e.Name, Live: e.live, Health: health(r.Ready), Host: r.Host, URL: rowURL(r), CanLogin: p.Login,
+				Env: e.Name, Live: e.live, Health: health(r.Ready), Host: r.Host, URL: r.URL, CanLogin: p.Login,
+				AdminBlockedBy: "",
 			})
 
 			source, ok := byKey[key{e.PromoteFrom, name}]
@@ -189,20 +211,6 @@ func health(ready string) ui.Health {
 	}
 
 	return ui.HealthOf(ready)
-}
-
-// rowURL is the link to a site in the list.
-func rowURL(r ops.SiteRow) string {
-	return hostURL(r.Host)
-}
-
-// hostURL is the link to a host, empty for no host.
-func hostURL(host string) string {
-	if host == "" {
-		return ""
-	}
-
-	return "https://" + host
 }
 
 // filterCards keeps the cards whose site name or one of whose addresses

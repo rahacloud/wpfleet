@@ -37,7 +37,7 @@ environments:
 
 // fleetOps is FleetOps on dir.
 func fleetOps(dir string) web.FleetOps {
-	return web.FleetOps{Dir: func() string { return dir }, Getenv: func(string) string { return "" }}
+	return web.FleetOps{Dir: func() string { return dir }, Getenv: func(string) string { return "" }, Authors: nil}
 }
 
 func TestFleetOpsReadsTheFleet(t *testing.T) {

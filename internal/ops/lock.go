@@ -3,6 +3,7 @@ package ops
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 )
 
@@ -33,33 +34,46 @@ type lockKey struct {
 	env, site string
 }
 
-// Locks lets one operation run per site and environment at a time. The zero
-// value is ready to use; a Locks must not be copied after first use. The
-// locks live in memory, so they hold within one process only.
+// holder is one operation holding a site; a pointer, so a release removes
+// exactly its own entry when two operations of the same name hold the site.
+type holder struct {
+	action string
+}
+
+// Locks lets one operation run per site and environment at a time, except
+// those Beside lets run together. The zero value is ready to use and lets
+// nothing run beside anything; a Locks must not be copied after first use.
+// The locks live in memory, so they hold within one process only.
 type Locks struct {
+	// Beside reports whether the operation wanted may start while running
+	// holds the site. It is asked about every operation holding the site and
+	// should answer the same both ways round; nil allows nothing.
+	Beside func(running, wanted string) bool
+
 	mu   sync.Mutex
-	held map[lockKey]string
+	held map[lockKey][]*holder
 }
 
 // TryLock takes the lock of site in env for action, without waiting. It
 // returns the function that releases it, which may be called more than once.
-// When another operation holds the site it returns a *BusyError naming that
-// operation.
+// When an operation that Beside does not allow beside action holds the site
+// it returns a *BusyError naming that operation.
 func (l *Locks) TryLock(env, site, action string) (func(), error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	key := lockKey{env: env, site: site}
 
-	if running, ok := l.held[key]; ok {
+	if running, ok := l.blocking(key, action); ok {
 		return nil, &BusyError{Env: env, Site: site, Action: running}
 	}
 
 	if l.held == nil {
-		l.held = map[lockKey]string{}
+		l.held = map[lockKey][]*holder{}
 	}
 
-	l.held[key] = action
+	h := &holder{action: action}
+	l.held[key] = append(l.held[key], h)
 
 	var once sync.Once
 
@@ -68,17 +82,45 @@ func (l *Locks) TryLock(env, site, action string) (func(), error) {
 			l.mu.Lock()
 			defer l.mu.Unlock()
 
-			delete(l.held, key)
+			l.held[key] = slices.DeleteFunc(l.held[key], func(other *holder) bool { return other == h })
+			if len(l.held[key]) == 0 {
+				delete(l.held, key)
+			}
 		})
 	}, nil
 }
 
-// Running returns the operation that holds site in env, if any.
+// Running returns the operation that holds site in env, the one that took
+// it first when several do, if any.
 func (l *Locks) Running(env, site string) (string, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
-	action, ok := l.held[lockKey{env: env, site: site}]
+	holders := l.held[lockKey{env: env, site: site}]
+	if len(holders) == 0 {
+		return "", false
+	}
 
-	return action, ok
+	return holders[0].action, true
+}
+
+// Blocking returns the operation holding site in env that would make
+// TryLock refuse action now, if any, so a page can say why a button would
+// be refused before anyone presses it.
+func (l *Locks) Blocking(env, site, action string) (string, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	return l.blocking(lockKey{env: env, site: site}, action)
+}
+
+// blocking is Blocking with l.mu held.
+func (l *Locks) blocking(key lockKey, action string) (string, bool) {
+	for _, h := range l.held[key] {
+		if l.Beside == nil || !l.Beside(h.action, action) {
+			return h.action, true
+		}
+	}
+
+	return "", false
 }

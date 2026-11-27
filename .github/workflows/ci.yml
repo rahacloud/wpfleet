@@ -63,5 +63,9 @@ jobs:
       - uses: actions/checkout@v7
       # Builds the server image to keep the Dockerfile working; nothing is
       # pushed until there is a release to push.
-      - run: docker build -f build/package/Dockerfile -t wpfleet:ci .
-      - run: docker run --rm wpfleet:ci --version
+      # The version must be stamped, not devel: the context has no .git.
+      - run: >-
+          docker build -f build/package/Dockerfile
+          --build-arg VERSION=ci-${GITHUB_SHA::7} --build-arg COMMIT=${GITHUB_SHA::7}
+          -t wpfleet:ci .
+      - run: docker run --rm wpfleet:ci --version | grep -F "rev ${GITHUB_SHA::7}"

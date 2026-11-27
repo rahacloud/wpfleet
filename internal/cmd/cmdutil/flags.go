@@ -43,6 +43,7 @@ func GlobalFlags() []cli.Flag {
 			Aliases: []string{"o"},
 			Usage:   "output format: table or json",
 			Value:   string(FormatTable),
+			Sources: cli.EnvVars("WPFLEET_OUTPUT"),
 			Validator: func(s string) error {
 				_, err := ParseFormat(s)
 

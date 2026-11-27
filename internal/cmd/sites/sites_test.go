@@ -100,7 +100,8 @@ current-context: c
 			"image:\n  repository: docker.io/library/wordpress\n",
 		"environments/staging/blog.yaml": "site: blog\ndatabase:\n  password: " + password + "\n" +
 			"image:\n  repository: registry.example.com/sites/blog\n  tag: \"20261126-101500\"\nbackup:\n  enabled: true\n",
-		"environments/staging/shop.yaml":      "site: shop\ndomains: [shop.example.com, www.shop.example.com]\n",
+		"environments/staging/shop.yaml": "site: shop\ndomains: [shop.example.com, www.shop.example.com]\n" +
+			"ingress:\n  tls:\n    enabled: false\n",
 		"environments/production/blog.yaml":   "site: blog\ndomains: [blog.example.com]\n",
 		"environments/production/notes.txt":   "not a site\n",
 		"environments/production/_shared.yml": "ignored: true\n",
@@ -198,11 +199,18 @@ func TestList(t *testing.T) {
 	testutil.NoError(t, json.Unmarshal([]byte(out), &rows))
 	testutil.DeepEqual(t, "rows", rows, []sites.Row{
 		{
-			Site: blog, Env: envStaging, Host: "blog.staging.example.com",
+			Site: blog, Env: envStaging, Host: "blog.staging.example.com", URL: "https://blog.staging.example.com",
 			Image: "registry.example.com/sites/blog:20261126-101500", Ready: "1/1",
 		},
-		{Site: "shop", Env: envStaging, Host: "shop.example.com", Image: defaultImage, Ready: "0/1"},
-		{Site: blog, Env: "production", Host: "blog.example.com", Image: defaultImage, Ready: "unknown"},
+		// shop turns TLS off, so its URL is http.
+		{
+			Site: "shop", Env: envStaging, Host: "shop.example.com", URL: "http://shop.example.com",
+			Image: defaultImage, Ready: "0/1",
+		},
+		{
+			Site: blog, Env: "production", Host: "blog.example.com", URL: "https://blog.example.com",
+			Image: defaultImage, Ready: "unknown",
+		},
 	})
 	testutil.NotContains(t, "secrets", out, password)
 
@@ -254,6 +262,7 @@ func TestShow(t *testing.T) {
 
 	testutil.NoError(t, json.Unmarshal([]byte(out), &d))
 	testutil.True(t, "not installed", d.Release == nil)
+	testutil.Equal(t, "url without TLS", d.URL, "http://shop.example.com")
 	testutil.Equal(t, "claim", d.Volume.Claim, "shop-uploads")
 	testutil.True(t, "claim missing", !d.Volume.Found)
 	testutil.True(t, "backup disabled", !d.Backup.Enabled)

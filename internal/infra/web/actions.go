@@ -283,8 +283,10 @@ func authorName(id access.Identity) string {
 
 // admin makes a one-time login link and redirects the browser to it. The
 // link is never rendered: it is only in the Location header of a response
-// that is not cached. It holds the site's lock while it makes the link, so
-// it never writes its token into a database a restore is replacing.
+// that is not cached. It holds the site's lock while it makes the link,
+// which Beside lets it share with a deploy, a publish, a backup and other
+// logins but not with a restore, so it never writes its token into a
+// database a restore is replacing.
 func (s *Server) admin(c *echo.Context) error {
 	t, ok, err := s.prepare(c, ui.ActionLogin, access.Login)
 	if !ok {

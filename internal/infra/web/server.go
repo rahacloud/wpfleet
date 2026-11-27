@@ -336,7 +336,7 @@ func (s *Server) message(
 ) error {
 	l := s.lang(c)
 	m := ui.Message{
-		Title: l.T(title), Text: l.T(text), Hint: "", Bad: bad, Link: link, LinkText: "", Support: s.deps.Support,
+		Title: l.T(title), Text: l.T(text), Hint: "", Bad: bad, Link: link, LinkText: "", Support: s.support(),
 	}
 
 	if link != "" {
@@ -355,7 +355,7 @@ func (s *Server) message(
 func (s *Server) refuse(c *echo.Context, status int, text string, back string) error {
 	l := s.lang(c)
 	m := ui.Message{
-		Title: l.T(i18n.RefusedTitle), Text: text, Hint: "", Bad: true, Link: back, LinkText: "", Support: s.deps.Support,
+		Title: l.T(i18n.RefusedTitle), Text: text, Hint: "", Bad: true, Link: back, LinkText: "", Support: s.support(),
 	}
 
 	if status == http.StatusForbidden && text == l.T(i18n.Forbidden) {
@@ -418,4 +418,9 @@ func (s *Server) readyz(c *echo.Context) error {
 	}
 
 	return c.String(http.StatusOK, "ok")
+}
+
+// support is whom the pages tell people to ask for help.
+func (s *Server) support() ui.Support {
+	return s.deps.Support
 }

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"slices"
 	"strconv"
@@ -16,6 +17,10 @@ import (
 
 // historyLength is how many commits of a site file the site page shows.
 const historyLength = 20
+
+// releaseHistoryLength is how many revisions of a site's release the site
+// page shows; Helm keeps ten.
+const releaseHistoryLength = 10
 
 // allows reports whether the session's person may use perm on site in env.
 func (s *Server) allows(sess session.Session, env, site string, perm access.Permission) bool {
@@ -92,24 +97,38 @@ func (s *Server) sitePage(c *echo.Context) error {
 		return err
 	}
 
-	sess := sessionOf(c)
-	ctx := c.Request().Context()
-
-	envs, err := s.deps.Ops.Environments()
+	view, err := s.siteView(c.Request().Context(), sessionOf(c), env, site)
 	if err != nil {
 		return err
 	}
 
+	return render(c, http.StatusOK, ui.SitePage(s.page(c, site+" · "+env), view))
+}
+
+// siteView builds the page of site in env for the person in sess. Only the
+// fleet failing to load is an error; a cluster that cannot be read marks
+// the view Unavailable and the rest still shows.
+func (s *Server) siteView(ctx context.Context, sess session.Session, env, site string) (ui.SiteView, error) {
+	envs, err := s.deps.Ops.Environments()
+	if err != nil {
+		return ui.SiteView{}, err
+	}
+
 	order := liveOrder(envs)
+
 	i := slices.IndexFunc(order, func(e orderedEnv) bool { return e.Name == env })
-	environment := order[i] // viewable found it
+	if i < 0 {
+		return ui.SiteView{}, echo.ErrNotFound
+	}
+
+	environment := order[i]
 
 	perms := s.perms(sess, env, site)
 	view := ui.SiteView{
 		Env: env, Site: site, Live: environment.live, Host: "", URL: "", Health: ui.HealthUnknown, Image: "", Tag: "",
 		PromoteFrom: "", FromTag: "", CanPublish: false,
-		Perms: perms, Engineering: perms.Deploy, Running: "", Unavailable: false, Ready: "",
-		Pods: nil, Release: nil, Releases: nil,
+		Perms: perms, Engineering: perms.Deploy, Running: "", AdminBlockedBy: s.adminBlockedBy(env, site),
+		Unavailable: false, Ready: "", Pods: nil, Release: nil, Releases: nil,
 		Volume: ui.Volume{Claim: "", Found: false, Phase: "", Capacity: "", StorageClass: ""},
 		Backup: ui.BackupState{Enabled: false, LastSuccess: nil}, Others: nil, CSRF: sess.CSRF, Now: s.now(),
 	}
@@ -120,7 +139,7 @@ func (s *Server) sitePage(c *echo.Context) error {
 
 	view.Others, err = s.otherEnvironments(sess, order, env, site)
 	if err != nil {
-		return err
+		return ui.SiteView{}, err
 	}
 
 	detail, err := s.deps.Ops.ShowSite(ctx, env, site)
@@ -129,6 +148,12 @@ func (s *Server) sitePage(c *echo.Context) error {
 	} else {
 		s.log.WarnContext(ctx, "reading a site", "env", env, "site", site, "error", err)
 		view.Unavailable = true
+	}
+
+	if view.Release != nil {
+		if history := s.releaseHistory(ctx, env, site); len(history) > 0 {
+			view.Releases = history
+		}
 	}
 
 	if environment.PromoteFrom != "" && s.allows(sess, environment.PromoteFrom, site, access.View) {
@@ -140,7 +165,39 @@ func (s *Server) sitePage(c *echo.Context) error {
 		}
 	}
 
-	return render(c, http.StatusOK, ui.SitePage(s.page(c, site+" · "+env), view))
+	return view, nil
+}
+
+// adminBlockedBy is the action that would make "Open admin" on site in env
+// refused as busy now, or empty.
+func (s *Server) adminBlockedBy(env, site string) ui.Action {
+	running, ok := s.deps.Locks.Blocking(env, site, string(ui.ActionLogin))
+	if !ok {
+		return ""
+	}
+
+	return ui.Action(running)
+}
+
+// releaseHistory reads the revisions of the site's release; a failure is
+// logged and shows as no history, the rest of the page still renders.
+func (s *Server) releaseHistory(ctx context.Context, env, site string) []ui.ReleaseEntry {
+	revisions, err := s.deps.Ops.History(ctx, env, site, releaseHistoryLength)
+	if err != nil {
+		s.log.WarnContext(ctx, "reading a release's history", "env", env, "site", site, "error", err)
+
+		return nil
+	}
+
+	entries := make([]ui.ReleaseEntry, 0, len(revisions))
+	for _, r := range revisions {
+		entries = append(entries, ui.ReleaseEntry{
+			Revision: r.Revision, Updated: r.Updated, Status: r.Status,
+			Commit: ui.ShortSHA(r.Commit.SHA), Dirty: r.Commit.Dirty, Author: r.Author,
+		})
+	}
+
+	return entries
 }
 
 // otherEnvironments are the environments other than env that have the site
@@ -169,7 +226,7 @@ func (s *Server) otherEnvironments(sess session.Session, order []orderedEnv, env
 // fillSite copies what ShowSite read into the site page.
 func fillSite(view *ui.SiteView, d ops.SiteDetail) {
 	view.Host = d.Host
-	view.URL = hostURL(d.Host)
+	view.URL = d.URL
 	view.Image = d.Image
 	view.Tag = imageTag(d.Image)
 	view.Volume = ui.Volume{
@@ -196,11 +253,11 @@ func fillSite(view *ui.SiteView, d ops.SiteDetail) {
 			Revision: d.Release.Revision, Status: d.Release.Status, Updated: d.Release.Updated,
 			Commit: ui.ShortSHA(commit.SHA), Dirty: commit.Dirty,
 		}
-		// ShowSite reads the installed release only, so the history starts
-		// with it; the author of its commit is not known here.
+		// The history starts with the installed release, which is all there
+		// is to show when the release history cannot be read.
 		view.Releases = []ui.ReleaseEntry{{
 			Revision: view.Release.Revision, Updated: view.Release.Updated, Status: view.Release.Status,
-			Commit: view.Release.Commit, Author: "",
+			Commit: view.Release.Commit, Dirty: view.Release.Dirty, Author: "",
 		}}
 	}
 }
