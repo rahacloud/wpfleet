@@ -26,9 +26,13 @@ jobs:
       - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version-file: go.mod
+      # A fixed version, so a new linter that `default: all` turns on cannot
+      # fail CI without a commit. Dependabot does not move this input: bump
+      # it by hand, with the code it then asks for, as the other tool pins
+      # in security.yml and the release workflows.
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          version: latest
+          version: v2.15.0
           args: --timeout=15m
 
   chart:
