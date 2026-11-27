@@ -1,0 +1,15 @@
+# syntax=docker/dockerfile:1
+# The released wpfleet image. GoReleaser builds the binaries first and puts
+# each one at <os>/<arch>/wpfleet in the build context, so this file only
+# copies the binary of the target platform. build/package/Dockerfile builds
+# the same image from source for development.
+
+# Static, with CA certificates and time zones, no shell; the nonroot user is
+# 65532, which the server chart's securityContext names.
+FROM gcr.io/distroless/static-debian13:nonroot@sha256:8ce6dd87e9823c5b48dcfb2c8604714ccb351ce59607327bcc4957448da279b5
+ARG TARGETPLATFORM
+COPY ${TARGETPLATFORM}/wpfleet /usr/local/bin/wpfleet
+USER 65532:65532
+EXPOSE 8080 9090
+ENTRYPOINT ["/usr/local/bin/wpfleet"]
+CMD ["serve"]

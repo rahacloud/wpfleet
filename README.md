@@ -42,6 +42,8 @@ just test
 just lint     # golangci-lint and helm lint
 ```
 
+[docs/releasing.md](docs/releasing.md) says how a release is cut, what it publishes and how to verify its signatures and provenance.
+
 ## License
 
 Apache-2.0, see [LICENSE](LICENSE).

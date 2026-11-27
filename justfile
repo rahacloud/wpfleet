@@ -20,3 +20,7 @@ tidy:
 update:
     go get -u ./...
     go mod tidy
+
+# Run the release into dist/ without publishing or signing (docs/releasing.md)
+release-snapshot:
+    goreleaser release --snapshot --clean --skip=publish,sign
