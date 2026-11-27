@@ -125,13 +125,14 @@ func (l Lang) Bytes(n int64) string {
 	return l.digits(text) + " " + byteUnits[unit]
 }
 
-// timeLayout is how the UI writes a time: ISO dates read the same in both
-// languages, and UTC keeps a team in several time zones on one clock.
-const timeLayout = "2006-01-02 15:04 UTC"
-
-// Time writes a time in UTC in the language's digits.
+// Time writes a time in UTC as a date and a clock, in the language's
+// calendar and digits: "27 Nov 2026 at 09:05 UTC", and in Persian the Solar
+// Hijri date, "۶ آذر ۱۴۰۵ ساعت ۰۹:۰۵ (UTC)". UTC keeps a team in several time
+// zones on one clock.
 func (l Lang) Time(t time.Time) string {
-	return l.digits(t.UTC().Format(timeLayout))
+	t = t.UTC()
+
+	return l.T(DateAt, l.Date(t), l.digits(t.Format("15:04")))
 }
 
 // catalogue is the language's messages.

@@ -795,7 +795,8 @@ func TestPersianNumbers(t *testing.T) {
 	testutil.Contains(t, "result", body, "بازبینی ۴ مستقر شد")
 
 	page := h.request(http.MethodGet, "/sites/staging/blog", nil, cookie).Body.String()
-	testutil.Contains(t, "site page", page, "۱/۱")
+	testutil.Contains(t, "site page", page, "۱/۱", "<dd>۴ آذر ۱۴۰۵ ساعت ۱۰:۰۰ (UTC)</dd>")
+	testutil.NotContains(t, "no Gregorian dates in Persian", page, "۲۰۲۶-")
 
 	home := h.request(http.MethodGet, "/", nil, cookie).Body.String()
 	testutil.Contains(t, "home", home, `dir="rtl"`, "۲ سایت", "در دسترس")

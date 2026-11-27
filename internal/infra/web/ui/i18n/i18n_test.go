@@ -84,9 +84,15 @@ func TestPersianDigits(t *testing.T) {
 		t.Errorf("Int = %q", got)
 	}
 
-	when := time.Date(2026, 11, 27, 9, 5, 0, 0, time.UTC)
-	if got := i18n.Persian.Time(when); got != "۲۰۲۶-۱۱-۲۷ ۰۹:۰۵ UTC" {
-		t.Errorf("Time = %q", got)
+	// A time is in the language's calendar as well as its digits, and in
+	// UTC whatever the time's own zone.
+	when := time.Date(2026, 11, 27, 12, 35, 0, 0, time.FixedZone("Tehran", 3*3600+1800))
+	if got := i18n.Persian.Time(when); got != "۶ آذر ۱۴۰۵ ساعت ۰۹:۰۵ (UTC)" {
+		t.Errorf("Persian Time = %q", got)
+	}
+
+	if got := i18n.English.Time(when); got != "27 Nov 2026 at 09:05 UTC" {
+		t.Errorf("English Time = %q", got)
 	}
 
 	if got := i18n.Persian.Bytes(1536); got != "۱٫۵ KiB" {
