@@ -3,6 +3,7 @@ package gitrepo
 import (
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -40,10 +41,18 @@ func authFor(c Config) (transport.AuthMethod, error) {
 	return tokenAuth(ep, c.Token)
 }
 
-// sshAuth reads a deploy key for an SSH endpoint.
+// sshAuth reads a deploy key for an SSH endpoint and checks the host's key
+// against the knownHosts files, or with none against SSH_KNOWN_HOSTS, else
+// ~/.ssh/known_hosts and /etc/ssh/ssh_known_hosts.
+//
+// It also asks the host for exactly the key types those files hold for it.
+// go-git leaves the algorithms empty with a deploy key, and a host then
+// answers with the key it prefers (ECDSA before ed25519), so a known_hosts
+// that lists only the ed25519 key, as GitHub's documentation gives it, would
+// fail with a key mismatch.
 //
 //nolint:ireturn // go-git takes credentials only as this interface
-func sshAuth(ep *transport.Endpoint, keyFile string) (transport.AuthMethod, error) {
+func sshAuth(ep *transport.Endpoint, keyFile string, knownHosts ...string) (transport.AuthMethod, error) {
 	if ep.Protocol != "ssh" {
 		return nil, fmt.Errorf("%w: an SSH key needs an SSH URL, not %s", ErrInvalid, ep.Protocol)
 	}
@@ -57,6 +66,19 @@ func sshAuth(ep *transport.Endpoint, keyFile string) (transport.AuthMethod, erro
 	if err != nil {
 		return nil, fmt.Errorf("reading the SSH key %s: %w", keyFile, err)
 	}
+
+	db, err := ssh.NewKnownHostsDb(knownHosts...)
+	if err != nil {
+		return nil, fmt.Errorf("reading the known hosts to check %s: %w", ep.Host, err)
+	}
+
+	port := ep.Port
+	if port <= 0 {
+		port = ssh.DefaultPort
+	}
+
+	keys.HostKeyCallback = db.HostKeyCallback()
+	keys.HostKeyAlgorithms = db.HostKeyAlgorithms(net.JoinHostPort(ep.Host, strconv.Itoa(port)))
 
 	return keys, nil
 }
