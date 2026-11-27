@@ -12,7 +12,9 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	eventsv1 "k8s.io/api/events/v1"
+	apivalidation "k8s.io/apimachinery/pkg/api/validation"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 
@@ -97,6 +99,14 @@ func TestAuditWritesAJSONLineAndAnEvent(t *testing.T) {
 	testutil.Equal(t, "controller", e.ReportingController, "wpfleet")
 	testutil.Equal(t, "instance", e.ReportingInstance, "wpfleet-0")
 	testutil.Contains(t, "note", e.Note, "editor@example.com", "WordPress user editor")
+
+	// The fake clientset takes any generateName and makes no name; the API
+	// server checks generateName as a name prefix, which may end in a dash
+	// but not in a dot, before it adds the random suffix.
+	meta := e.ObjectMeta
+	meta.Name = meta.GenerateName + "x7k2q"
+	errs := apivalidation.ValidateObjectMeta(&meta, true, apivalidation.NameIsDNSSubdomain, field.NewPath("metadata"))
+	testutil.Equal(t, "the API server's metadata errors", fmt.Sprint(errs), "[]")
 }
 
 func TestAuditEventForAFailure(t *testing.T) {

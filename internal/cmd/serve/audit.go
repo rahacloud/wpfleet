@@ -143,7 +143,9 @@ func siteEvent(r audit.Record, deployment metav1.ObjectMeta, instance string) *e
 
 	//nolint:exhaustruct_v5 // an Event sets what it reports; the rest is the API server's
 	return &eventsv1.Event{
-		GenerateName:        deployment.Name + ".wpfleet.",
+		// The API server checks generateName as a name prefix, which may end
+		// in a dash but not in a dot.
+		GenerateName:        deployment.Name + ".wpfleet-",
 		Namespace:           deployment.Namespace,
 		EventTime:           metav1.NewMicroTime(r.Time),
 		ReportingController: eventController,
