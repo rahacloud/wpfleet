@@ -114,7 +114,7 @@ salts:
 
 The database password must be at least 16 letters and digits, with no other characters, because it passes through YAML, shell, SQL and PHP. Generate the password and the eight salts once per site and per environment, for example with `openssl rand -hex 16` for the password and `openssl rand -hex 32` for each salt. wpfleet never generates or prints them, and a deploy uses them exactly as the file says. Do not regenerate them for a running site without a reason: new salts log every user out, and a new password works only while the provisioning hook (`database.provision`) can set it on the database server.
 
-Leave `image` out at first and the site runs the official WordPress image that the chart names.
+Leave `image` out at first, as the example does, and the site runs the official WordPress image that the chart names. `wpfleet build --set` adds the image block later (see below).
 
 ### Check what wpfleet sees
 
@@ -124,8 +124,8 @@ wpfleet sites list
 
 ```text
 SITE  ENV          HOST                      IMAGE                                            READY
-blog  development  blog-dev.example.com      registry.example.com/sites/blog:20261101-090000  0/0
-blog  staging      blog-staging.example.com  registry.example.com/sites/blog:20261101-090000  0/0
+blog  development  blog-dev.example.com      docker.io/library/wordpress:7.0.2-php8.4-apache  0/0
+blog  staging      blog-staging.example.com  docker.io/library/wordpress:7.0.2-php8.4-apache  0/0
 ```
 
 This is the example fleet before anything is deployed: no pods yet, so READY is `0/0`. `sites list` reads the values files and asks each environment's cluster how many of the site's pods are ready. If it cannot reach a cluster, it prints a warning and shows READY as `unknown`, and the rest of the list still prints, so you can check a new fleet before any cluster is set up. Run it from the fleet directory, or point at the fleet from anywhere with `--fleet ~/fleet` or `WPFLEET_FLEET`.

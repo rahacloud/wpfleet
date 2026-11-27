@@ -88,7 +88,7 @@ The nightly backups themselves are made by a CronJob in each site's release, con
 | `server.git.url` | string | | The fleet repository the server clones, for example `git@github.com:example/fleet.git`. |
 | `server.git.branch` | string | `main` | The branch the server deploys from and pushes promotions to. |
 | `server.git.pollInterval` | duration | `1m` | How often the server fetches the branch. A push webhook at `POST /hooks/git` makes it fetch at once. |
-| `server.git.committer.name` | string | | The committer name of the server's commits; the signed-in person is the author. |
+| `server.git.committer.name` | string | `wpfleet` | The committer name of the server's commits; the signed-in person is the author. |
 | `server.git.committer.email` | string | | The committer email of the server's commits. |
 | `server.oidc.issuer` | string | | The OpenID Connect issuer, for example `https://sso.example.com/realms/main`. Any provider that publishes discovery works: Keycloak, Dex, Azure AD, Google, and GitHub through Dex. |
 | `server.oidc.clientID` | string | | The OIDC client ID. |

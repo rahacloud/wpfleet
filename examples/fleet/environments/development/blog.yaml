@@ -1,11 +1,9 @@
 # The site "blog" in development. The file name is the site name.
 site: blog
 
-# `wpfleet build --set` writes the image in development, and `wpfleet
-# promote` copies it from there into staging.
-image:
-  repository: registry.example.com/sites/blog
-  tag: 20261101-090000
+# No image yet, so the site runs the official WordPress image that the chart
+# names. `wpfleet build --set` adds an image block to this file in
+# development, and `wpfleet promote` copies it from there into staging.
 
 # EXAMPLE ONLY: the password and salts below are placeholders, not secrets.
 # Generate real ones for every site and every environment, and keep the fleet
