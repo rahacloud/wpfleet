@@ -85,6 +85,7 @@ func TestFleet(t *testing.T) {
 			Name: "a", Namespace: "x", Kubeconfig: "/etc/kube", Context: "", Values: "/srv/a", PromoteFrom: "",
 		}},
 		Backup: config.Backup{S3: config.S3{Endpoint: "", Bucket: "", Region: ""}},
+		Server: config.DefaultServer(),
 	}
 	testutil.Equal(t, "absolute values dir", abs.Fleet(dir).Environments[0].ValuesDir, "/srv/a")
 	testutil.Equal(t, "absolute kubeconfig", abs.Fleet(dir).Environments[0].Kubeconfig, "/etc/kube")
