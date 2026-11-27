@@ -1,0 +1,24 @@
+# Values every site in development shares. Each site is served on
+# <site>-dev.example.com, so one wildcard certificate covers them all.
+domainSuffix: example.com
+hostLabelSuffix: -dev
+
+database:
+  # The MariaDB service in the wp-development namespace.
+  host: mariadb
+
+ingress:
+  className: nginx
+  tls:
+    clusterIssuer: letsencrypt
+
+wordpress:
+  debug: true
+
+backup:
+  enabled: true
+  s3:
+    endpoint: https://s3.example.com
+    bucket: wordpress-backups
+    # A Secret in the namespace with access-key-id and secret-access-key.
+    secretName: backup-s3

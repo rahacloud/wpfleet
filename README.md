@@ -45,3 +45,12 @@ just lint     # golangci-lint and helm lint
 ## License
 
 Apache-2.0, see [LICENSE](LICENSE).
+
+## Documentation
+
+- [Getting started](docs/getting-started.md): install wpfleet, make a fleet repository, deploy a first site, open its admin and back it up.
+- [Configuration](docs/configuration.md): every key of `wpfleet.yaml`.
+- [The WordPress chart](docs/chart.md): every value of the chart, grouped by purpose.
+- [For content teams](docs/for-content-teams.md): what editors will be able to do in the coming web UI.
+- [Example fleet](examples/fleet): a small fleet with two environments and one site.
+- [Design](docs/design.md): how wpfleet works inside.

@@ -1,0 +1,24 @@
+# The site "blog" in staging. The file name is the site name.
+site: blog
+
+# `wpfleet build --set` writes the image in development, and `wpfleet
+# promote` copies it from there into staging.
+image:
+  repository: registry.example.com/sites/blog
+  tag: 20261101-090000
+
+# EXAMPLE ONLY: the password and salts below are placeholders, not secrets.
+# Generate real ones for every site and every environment, and keep the fleet
+# repository private. The password must be at least 16 letters and digits.
+database:
+  password: ExampleOnlyNotASecretStaging1
+
+salts:
+  authKey: example-only-not-a-secret-auth-key-staging
+  secureAuthKey: example-only-not-a-secret-secure-auth-key-staging
+  loggedInKey: example-only-not-a-secret-logged-in-key-staging
+  nonceKey: example-only-not-a-secret-nonce-key-staging
+  authSalt: example-only-not-a-secret-auth-salt-staging
+  secureAuthSalt: example-only-not-a-secret-secure-auth-salt-staging
+  loggedInSalt: example-only-not-a-secret-logged-in-salt-staging
+  nonceSalt: example-only-not-a-secret-nonce-salt-staging
