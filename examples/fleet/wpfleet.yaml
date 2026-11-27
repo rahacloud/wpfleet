@@ -1,0 +1,25 @@
+# An example fleet with two environments and one site. Every name, host and
+# bucket here is invented; replace them with your own.
+
+# Empty: the chart embedded in the wpfleet binary.
+chart: ""
+# Site images are <registry>/<site>:<tag>.
+registry: registry.example.com/sites
+build:
+  base: docker.io/library/wordpress:7.0.2-php8.4-apache
+environments:
+  - name: development
+    namespace: wp-development
+    # Empty kubeconfig and context: the usual KUBECONFIG rules and the current
+    # context. Set them to point an environment at another cluster.
+    kubeconfig: ""
+    context: ""
+  - name: staging
+    namespace: wp-staging
+    promoteFrom: development
+backup:
+  s3:
+    endpoint: https://s3.example.com
+    bucket: wordpress-backups
+    # The keys come from WPFLEET_S3_ACCESS_KEY_ID and
+    # WPFLEET_S3_SECRET_ACCESS_KEY, never from this file.
