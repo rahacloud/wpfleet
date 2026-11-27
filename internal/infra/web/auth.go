@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v5"
 
@@ -56,8 +57,8 @@ func (s *Server) callback(c *echo.Context) error {
 	var nobody access.Identity
 
 	if e := c.QueryParam("error"); e != "" {
-		s.authRecord(ctx, actionSignIn, nobody, audit.ResultDenied,
-			joinDetail("the provider refused the sign-in", joinDetail(e, c.QueryParam("error_description"))))
+		reason := joinDetail(oauthText(e, maxErrorCode), oauthText(c.QueryParam("error_description"), maxErrorDescription))
+		s.authRecord(ctx, actionSignIn, nobody, audit.ResultDenied, joinDetail("the provider refused the sign-in", reason))
 
 		return s.signInFailed(c)
 	}
@@ -97,6 +98,33 @@ func (s *Server) callback(c *echo.Context) error {
 	s.authRecord(ctx, actionSignIn, id, audit.ResultOK, "")
 
 	return c.Redirect(http.StatusSeeOther, session.SafeReturnPath(flow.ReturnTo))
+}
+
+// The longest provider error code and description the audit keeps. Anyone
+// can call the callback without a session, so what it writes into the log
+// people trust for who did what is cut short.
+const (
+	maxErrorCode        = 64
+	maxErrorDescription = 200
+)
+
+// oauthText keeps the characters RFC 6749 allows in an error code or
+// description (%x20-21 / %x23-5B / %x5D-7E: printable ASCII without '"' and
+// '\'), drops every other, and cuts the rest to at most limit bytes.
+func oauthText(raw string, limit int) string {
+	var b strings.Builder
+
+	for _, r := range raw {
+		if b.Len() >= limit {
+			break
+		}
+
+		if r >= 0x20 && r <= 0x7e && r != '"' && r != '\\' {
+			b.WriteRune(r)
+		}
+	}
+
+	return b.String()
 }
 
 // signInFailed says the sign-in failed and offers another.

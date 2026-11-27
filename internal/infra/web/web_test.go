@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1184,6 +1185,28 @@ func TestFailedSignInsAreAudited(t *testing.T) {
 		testutil.Equal(t, "no actor", records[i].Actor.Subject, "")
 		testutil.Contains(t, "detail", records[i].Detail, want)
 	}
+}
+
+// Anyone can call the callback, so the provider's error and its description
+// reach the audit cut short and with only the characters RFC 6749 allows.
+func TestProviderErrorIsCutInTheAudit(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t)
+
+	q := url.Values{
+		"error":             {"access_denied\n\"forged\" line" + strings.Repeat("x", 100)},
+		"error_description": {strings.Repeat("A", 5000) + "\u202e"},
+	}
+	w := h.request(http.MethodGet, "/auth/callback?"+q.Encode(), nil, nil)
+	testutil.Equal(t, "status", w.Code, http.StatusUnauthorized)
+
+	detail := h.audit.only(t).Detail
+	testutil.True(t, "detail is short, got "+strconv.Itoa(len(detail)), len(detail) < 320)
+	testutil.Contains(t, "detail", detail, "the provider refused the sign-in: access_deniedforged line")
+	testutil.NotContains(t, "no new line", detail, "\n")
+	testutil.NotContains(t, "no quote", detail, `"`)
+	testutil.NotContains(t, "no bidi control", detail, "\u202e")
 }
 
 func TestSignOutIsAudited(t *testing.T) {
