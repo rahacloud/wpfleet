@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"helm.sh/helm/v4/pkg/action"
@@ -187,9 +188,24 @@ type Client struct {
 	Timeout time.Duration
 }
 
+// FieldManager is the server-side apply field manager wpfleet writes as. It
+// is the helm CLI's own, so a release can go back and forth between wpfleet
+// and helm upgrade: under two managers, a change of a field the other one
+// owns is refused as a conflict and leaves a failed revision.
+const FieldManager = "helm"
+
+// useHelmsFieldManager sets the manager in Helm's SDK, which takes it from a
+// package variable and, without one, from the program's name ("wpfleet").
+// Once, because clients are made from many goroutines.
+//
+//nolint:gochecknoglobals // a sync.OnceFunc is the race-free way to set Helm's package variable
+var useHelmsFieldManager = sync.OnceFunc(func() { helmkube.ManagedFieldsManager = FieldManager })
+
 // New makes a client for the chart and the cluster of target. It does not
 // contact the cluster until an action needs it.
 func New(ch *chartv2.Chart, target kube.Target) *Client {
+	useHelmsFieldManager()
+
 	return &Client{
 		chart: ch,
 		configure: func(namespace string) (*action.Configuration, error) {

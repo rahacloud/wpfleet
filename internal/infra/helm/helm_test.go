@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	chartv2 "helm.sh/helm/v4/pkg/chart/v2"
+	helmkube "helm.sh/helm/v4/pkg/kube"
 	releasei "helm.sh/helm/v4/pkg/release"
 	"helm.sh/helm/v4/pkg/release/common"
 	releasev1 "helm.sh/helm/v4/pkg/release/v1"
@@ -235,4 +236,18 @@ func TestHistory(t *testing.T) {
 	two, err := client.History(site, namespace, 2)
 	testutil.NoError(t, err)
 	testutil.DeepEqual(t, "limited", []int{two[0].Revision, two[1].Revision}, []int{11, 10})
+}
+
+// TestNewSharesHelmsFieldManager guards the interplay with the helm CLI: a
+// release that helm upgrade made must take a wpfleet deploy that changes a
+// field, and the other way round, which server-side apply allows only when
+// both write as the same manager.
+func TestNewSharesHelmsFieldManager(t *testing.T) {
+	t.Parallel()
+
+	helm.New(embedded(t), kube.Target{Kubeconfig: "", Context: "", Namespace: ""})
+
+	if got := helmkube.ManagedFieldsManager; got != "helm" {
+		t.Fatalf("field manager = %q, want %q, the helm CLI's", got, "helm")
+	}
 }
