@@ -1,4 +1,4 @@
-# wpfleet
+<h1><img src="docs/images/banner.svg" alt="wpfleet: WordPress sites on Kubernetes, run from one Git repository" width="100%"></h1>
 
 Manage a fleet of WordPress sites on Kubernetes from one Git repository: deploy every site with one shared Helm chart, build and promote site images from development to production, open a site's admin with a one-time link, and back sites up to S3 and restore them.
 
